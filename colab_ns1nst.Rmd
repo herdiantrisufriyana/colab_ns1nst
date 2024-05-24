@@ -1,0 +1,2755 @@
+---
+title: "Dengue Virus Nonstructural Protein 1 Binding to Thrombin as a Dengue Severity Marker: Comprehensive Patient Analysis in South Taiwan"
+author: "Josephine Diony Nanda, Trai-Ming Yeh, Rahmat Dani Satria, Ming-Kai Jhan, Yung-Ting Wang, Ya-Lan Lin, Chiou-Feng Lin, Herdiantri Sufriyana, Emily Chia-Yu Su, Tzong-Shiann Ho"
+date: "2024-05-13"
+output: html_document
+---
+
+# Programming environment
+
+We used R 4.4.0. All the analytical codes are publicly shared. However, data access should be requested to the corresponding author.
+
+```{r Set random seed, include=FALSE}
+seed=2024-05-13
+```
+
+```{r Load packages, include=FALSE}
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(ggpubr)
+library(readxl)
+library(broom)
+library(mice)
+filter=dplyr::filter
+cbind=base::cbind
+rbind=base::rbind
+library(MASS)
+select=dplyr::select
+library(igraph)
+library(ggnetwork)
+```
+
+```{r Choose theme, include=FALSE}
+dslabs::ds_theme_set()
+```
+
+```{r Determine kable format, include=FALSE}
+kable_format='html'
+```
+
+```{r Load functions, include=FALSE}
+list.files('R/',full.names=T) %>%
+  lapply(source)
+```
+
+# Data preprocessing
+
+Briefly, we conducted data cleaning, data tranformation, outlier analysis, removal of categorical variables with perfect separation, and missing data handling before regression analyses.
+
+## Data cleaning
+
+There are 92 rows and 47 columns in raw data.
+
+```{r Load raw data, include=FALSE}
+raw_data=
+  read_xlsx('inst/ext/raw_data.xlsx',skip=1)
+```
+
+```{r Write original column names, eval=FALSE, include=FALSE}
+raw_data %>%
+  colnames() %>%
+  data.frame(colname_old=.) %>%
+  write_csv('inst/ext/raw_data_colnames_old.csv')
+```
+
+```{r Modify column names, include=FALSE}
+raw_data2=
+  raw_data %>%
+  `colnames<-`(
+    colnames(.) %>%
+      data.frame(colname_old=.) %>%
+      left_join(
+        read_csv('inst/ext/raw_data_colnames_new.csv',show_col_types=F)
+        ,by=join_by(colname_old)
+      ) %>%
+      pull(colname_new)
+  )
+```
+
+```{r Variable description, echo=FALSE}
+read_csv('inst/ext/raw_data_colnames_new.csv',show_col_types=F) %>%
+  mutate(no=seq(nrow(.))) %>%
+  select(no,variable=colname_new,description=colname_old) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Variable description.'
+      )
+    ,
+  ) %>%
+  kable_classic()
+```
+
+```{r Check variable classes, eval=FALSE, include=FALSE}
+raw_data2 %>%
+  sapply(class) %>%
+  table(variable_class=.)
+```
+
+```{r Check non-numeric values, eval=FALSE, include=FALSE}
+raw_data2 %>%
+  .[!sapply(.,is.numeric)] %>%
+  lapply(\(x)x[!duplicated(x)]) %>%
+  sapply(length)
+```
+
+```{r Separate numeric and non-numeric values, include=FALSE}
+raw_data3=
+  raw_data2 %>%
+  mutate_at(
+    c('id_sample'
+      ,'viral_load'
+    )
+    ,as.numeric
+  ) %>%
+  mutate_at(
+    c('severe'
+      ,'ascitis'
+      ,'pi_effusion'
+      ,'ns1'
+      ,'igg'
+      ,'igm'
+    )
+    ,as.factor
+  ) %>%
+  mutate_at(
+    colnames(.) %>%
+      .[str_detect(.,'^cm_')] %>%
+      .[.!='cm_other_condition']
+    ,as.factor
+  ) %>%
+  list(
+    numeric=
+      .[sapply(.,is.numeric)]
+    ,non_numeric=
+      .[!sapply(.,is.numeric)]
+  ) %>%
+  .[-1]
+```
+
+```{r Write non-numeric values, eval=FALSE, include=FALSE}
+raw_data3$non_numeric %>%
+  lapply(\(x)x[!duplicated(x)]) %>%
+  lapply(\(x)data.frame(value_old=x)) %>%
+  do.call(rbind,.) %>%
+  rownames_to_column(var='variable') %>%
+  mutate(
+    variable=
+      variable %>%
+      str_remove_all('\\.[:digit:]+$')
+  ) %>%
+  write_csv('inst/ext/raw_data_non_numeric_values_old.csv')
+```
+
+```{r Modify non-numeric values, include=FALSE}
+raw_data4=
+  raw_data3$numeric %>%
+  cbind(
+    raw_data3$non_numeric %>%
+      lapply(X=names(.),Y=.,\(X,Y)
+        Y %>%
+          select_at(X)
+      ) %>%
+      lapply(mutate,seq=seq(n())) %>%
+      lapply(gather,variable,value_old,-seq) %>%
+      lapply(
+        left_join
+        ,read_csv(
+          'inst/ext/raw_data_non_numeric_values_new.csv'
+          ,show_col_types=F
+        )
+        ,by=join_by(variable,value_old)
+      ) %>%
+      lapply(select,-value_old) %>%
+      lapply(spread,variable,value_new) %>%
+      lapply(arrange,seq) %>%
+      lapply(select,-seq) %>%
+      do.call(cbind,.)
+  ) %>%
+  select_at(colnames(raw_data2)) %>%
+  mutate_if(\(x)!is.numeric(x),as.factor)
+```
+
+```{r Check categorical variables with 1 category, include=FALSE}
+var_cat1=
+  raw_data4 %>%
+  .[sapply(.,is.factor)] %>%
+  lapply(levels) %>%
+  sapply(length) %>%
+  .[.==1] %>%
+  names()
+```
+
+We removed variables with only 1 category.
+
+```{r Categorical variables with 1 category, echo=FALSE}
+var_cat1 %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Remove categorical variables with 1 category, include=FALSE}
+raw_data5=
+  raw_data4 %>%
+  select_at(
+    colnames(.) %>%
+      .[!.%in%var_cat1]
+  )
+```
+
+```{r Select metadata or redundant variables, include=FALSE}
+var_meta_redundant=
+  c('ns1','cm_other_status','diag_test')
+```
+
+Metadata and redundant variables were also removed.
+
+```{r Metadata or redundant variables, echo=FALSE}
+var_meta_redundant %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Remove metadata or redundant variables, include=FALSE}
+raw_data6=
+  raw_data5 %>%
+  select_at(
+    colnames(.) %>%
+      .[!.%in%var_meta_redundant]
+  )
+```
+
+We ensured `physician_group` consistent to the diagnostic rules, i.e.:
+
+1. If `hospital_d` was 0, then `physician_group` was A;
+2. If `hospital_d` was 0 and neither 0 `icu_d` nor `severe`, then `physician_group` was B; and
+3. If `hospital_d` was 0 and either 0 `icu_d` or `severe`, then `physician_group` was C.
+
+Variable `physician_group` was renamed to `outcome`.
+
+```{r Make physician_group consistent to the rules and rename it, include=FALSE}
+raw_data7=
+  raw_data6 %>%
+  mutate_at('physician_group',as.character) %>%
+  mutate(
+    physician_group=
+      case_when(
+        hospital_d==0~'A'
+        ,hospital_d>0 & !(icu_d>0|severe=='yes')~'B'
+        ,hospital_d>0 & (icu_d>0|severe=='yes')~'C'
+        ,TRUE~''
+      )
+  ) %>%
+  mutate_at('physician_group',factor) %>%
+  select(-hospital_d,-icu_d,-severe) %>%
+  rename(outcome=physician_group)
+```
+
+```{r Finalize data cleaning, include=FALSE}
+cleaned_data=
+  raw_data7
+```
+
+```{r Categorize variables, include=FALSE}
+var=
+  list()
+
+var$id=
+  cleaned_data %>%
+  select(id_sample,id_specimen) %>%
+  colnames()
+
+var$strata=
+  cleaned_data %>%
+  select(batch) %>%
+  colnames()
+
+var$dependent=
+  cleaned_data %>%
+  select(outcome) %>%
+  colnames()
+
+var$independent=
+  cleaned_data %>%
+  select(ns1_od,nst_od) %>%
+  colnames()
+
+var$covariates=
+  cleaned_data %>%
+  colnames() %>%
+  .[!.%in%c(
+      var$id
+      ,var$strata
+      ,var$dependent
+      ,var$independent
+    )
+  ]
+```
+
+Initial variables after data cleaning were categorized into identifier variables, strata variables, dependent variable, independent variables, and covariates.
+
+```{r Show variable categories, echo=FALSE}
+var %>%
+  .[names(.)%in%c('id','strata','dependent','independent','covariates')] %>%
+  lapply(paste0,collapse=', ') %>%
+  sapply(X=names(.),Y=.,\(X,Y)paste0(X,': ',Y[[X]])) %>%
+  paste0(collapse='\n\n') %>%
+  cat()
+```
+
+# Data transformation
+
+We assessed the normality of numerical variables using normal quantile-to-quantile (QQ) plots.
+
+```{r Start from numerical variables, include=FALSE}
+num_data=
+  cleaned_data %>%
+  .[colnames(.) %>%
+      .[!.%in%var$id]
+  ] %>%
+  .[sapply(.,is.numeric)]
+```
+
+```{r Normal QQ plots of numerical variables, include=FALSE}
+normal_qq=
+  num_data %>%
+  lapply(X=colnames(.),Y=.,\(X,Y)
+    Y %>%
+      select_at(X) %>%
+      `colnames<-`('value') %>%
+      ggplot(aes(sample=value)) +
+      stat_qq(na.rm=T) +
+      stat_qq_line(color='red',na.rm=T) +
+      coord_flip() +
+      xlab('Normal Quantiles') +
+      ylab(X)
+  )
+```
+
+```{r figure-s1, echo=FALSE, fig.height=30, fig.width=15}
+normal_qq %>%
+  length() %>%
+  seq() %>%
+  split(LETTERS[1:3]) %>%
+  data.frame() %>%
+  lapply(X=seq(nrow(.)),Y=.,\(X,Y)
+    ggarrange(
+      normal_qq[[Y$A[X]]]
+      ,normal_qq[[Y$B[X]]]
+      ,normal_qq[[Y$C[X]]]
+      ,ncol=3
+    )
+  ) %>%
+  lapply(X=1,Y=.,\(X,Y)
+    ggarrange(
+      Y[[1]],Y[[2]],Y[[3]],Y[[4]],Y[[5]],Y[[6]]
+      ,ncol=1
+    )
+  ) %>%
+  .[[1]]
+```
+
+Figure S1. Normal QQ plots of numeric variables. QQ, quantile to quantile.
+
+We determined some variables were normally distributed.
+
+```{r Determine normality by QQ plot, include=FALSE}
+var_num_normal_qq=
+  c('wbc'
+    ,'hct'
+    ,'plt'
+    ,'got'
+    ,'gpt'
+    ,'cr'
+    ,'pt'
+    ,'ns1_od'
+    ,'nst_od'
+  )
+```
+
+```{r Numerical variables with normal distribution by QQ plots, echo=FALSE}
+var_num_normal_qq %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+Shapiro-Wilk normality tests were also conducted.
+
+```{r Normality test of numerical variables, include=FALSE}
+normal_test=
+  num_data %>%
+  lapply(X=colnames(.),Y=.,\(X,Y)
+    Y[[X]] %>%
+      shapiro.test() %>%
+      tidy() %>%
+      mutate(variable=X)%>%
+      select(variable,everything())
+  ) %>%
+  do.call(rbind,.)
+```
+
+```{r table-s1, echo=FALSE}
+normal_test %>%
+  mutate_at(2,round,3) %>%
+  select(-method) %>%
+  mutate(
+    variable=
+      paste0(
+        variable
+        ,ifelse(p.value<=0.05,'*','')
+      )
+  ) %>%
+  arrange(p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S2. Normality test.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '*, p-value <=0.05, '
+      ,'Shapiro-Wilk normality test'
+    )
+  ) %>%
+  kable_classic()
+```
+
+Some variables were not normally distributed by normality test. Nevertheless, we only applied data transformation to the variables that were neither normally distributed by QQ plots.
+
+```{r Determine num variables that are not normally distributed, include=FALSE}
+var_num_non_normal=
+  normal_test %>%
+  filter(p.value<=0.05) %>%
+  pull(variable) %>%
+  setdiff(var_num_normal_qq)
+```
+
+```{r Numerical variables that are not normally distributed, echo=FALSE}
+var_num_non_normal %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Non-normal mumerical variables with 0, include=FALSE}
+var_num_non_normal_with_zero=
+  num_data %>%
+  select_at(var_num_non_normal) %>%
+  lapply(\(x)x[!duplicated(x)]) %>%
+  lapply(\(x)x[!is.na(x)]) %>%
+  sapply(\(x)any(x==0)) %>%
+  .[.] %>%
+  names()
+```
+
+```{r Non-normal mumerical variables with <0, include=FALSE}
+var_num_non_normal_with_neg=
+  num_data %>%
+  select_at(var_num_non_normal) %>%
+  lapply(\(x)x[!duplicated(x)]) %>%
+  lapply(\(x)x[!is.na(x)]) %>%
+  sapply(\(x)any(x<0)) %>%
+  .[.] %>%
+  names()
+```
+
+```{r Non-normal mumerical variables infinited exp, include=FALSE}
+var_num_non_normal_with_inf_exp=
+  num_data %>%
+  select_at(var_num_non_normal) %>%
+  lapply(\(x)x[!duplicated(x)]) %>%
+  lapply(\(x)x[!is.na(x)]) %>%
+  sapply(\(x)any(is.infinite(exp(x)))) %>%
+  .[.] %>%
+  names()
+```
+
+We applied several transformation techniques and chose ones with the lowest p-values of normality tests.
+
+```{r Determine choices for a transformation technique, include=FALSE}
+trans_choice=
+  var_num_non_normal %>%
+  data.frame(variable=.) %>%
+  mutate(
+    log=
+      ifelse(
+        variable%in%var_num_non_normal_with_zero
+        | variable%in%var_num_non_normal_with_neg
+        ,0
+        ,1
+      )
+    ,sqrt=
+      ifelse(
+        variable%in%var_num_non_normal_with_neg
+        ,0
+        ,1
+      )
+    ,inv=
+      ifelse(
+        variable%in%var_num_non_normal_with_zero
+        | variable%in%var_num_non_normal_with_neg
+        ,0
+        ,1
+      )
+    ,log2=
+      ifelse(
+        variable%in%var_num_non_normal_with_zero
+        | variable%in%var_num_non_normal_with_neg
+        ,0
+        ,1
+      )
+    ,exp=
+      ifelse(
+        variable%in%var_num_non_normal_with_inf_exp
+        ,0
+        ,1
+      )
+    ,asinh=1
+    ,bct=
+      ifelse(
+        variable%in%var_num_non_normal_with_zero
+        | variable%in%var_num_non_normal_with_neg
+        ,0
+        ,1
+      )
+  )
+```
+
+```{r Choices for a transformation technique, echo=FALSE}
+trans_choice %>%
+  colnames() %>%
+  .[.!='variable'] %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Simple transformations, include=FALSE}
+simple_trans=
+  trans_choice %>%
+  gather(func,do,-variable) %>%
+  filter(do==1) %>%
+  select(-do) %>%
+  filter(!func%in%c('bct')) %>%
+  lapply(X=1,Y=.,\(X,Y)
+    Y %>%
+      lapply(X=unique(.$func),Y=.,\(X,Y)
+        Y %>%
+          filter(func==X) %>%
+          pull(variable) %>%
+          lapply(X=.,Y=X,\(X,Y)
+            list(
+                log=log
+                ,sqrt=sqrt
+                ,inv=\(x)1/x
+                ,log2=log2
+                ,exp=exp
+                ,asinh=asinh
+              )[[Y]](num_data[[X]]) %>%
+              data.frame(trans=.) %>%
+              `colnames<-`(X)
+          )
+      ) %>%
+      `names<-`(unique(Y$func))
+  ) %>%
+  .[[1]]
+```
+
+```{r Box-Cox transformation (BCT), include=FALSE}
+bc_trans=
+  trans_choice %>%
+  gather(func,do,-variable) %>%
+  filter(do==1) %>%
+  select(-do) %>%
+  filter(func%in%c('bct')) %>%
+  pull(variable) %>%
+  `names<-`(as.character(.)) %>%
+  as.list()
+
+for(i in names(bc_trans)){
+  bc_trans[[i]]=
+    boxcox(
+      lm(num_data[[i]]~1)
+      ,lambda=seq(-2,2,by=0.1)
+      ,plot=F
+    ) %>%
+    c(list(value=num_data[[i]]))
+}
+
+rm(i)
+
+bc_trans=
+  bc_trans %>%
+  lapply(\(x)
+    list(
+      rep(NA,length(x$value))
+      ,(x$value^(x$x[which.max(x$y)])-1)/x$x[which.max(x$y)]
+    )[[ifelse(
+        abs(x$x[which.max(x$y)])<1e-10
+          ,1
+          ,2
+        )
+    ]]
+  ) %>%
+  lapply(X=names(.),Y=.,\(X,Y)
+    Y[[X]] %>%
+      data.frame(trans=.) %>%
+      `colnames<-`(X)
+  ) %>%
+  .[sapply(.,\(x)!all(is.na(x[[1]])))]
+```
+
+```{r Normality test of transformed numerical variables, include=FALSE}
+normal_test_after_trans=
+  simple_trans %>%
+  c(list(bct=bc_trans)) %>%
+  lapply(X=names(.),Y=.,\(X,Y)
+    Y[[X]] %>%
+      lapply(X=seq(length(.)),Y=.,Z=X,\(X,Y,Z)
+        Y[[X]] %>%
+          .[[1]] %>%
+          shapiro.test() %>%
+          tidy() %>%
+          mutate(
+            variable=colnames(Y[[X]])
+            ,func=Z
+          ) %>%
+          select(variable,func,p.value)
+      ) %>%
+      do.call(rbind,.)
+  ) %>%
+  do.call(rbind,.) %>%
+  mutate_at('func',\(x)factor(x,unique(x))) %>%
+  group_by(variable) %>%
+  mutate(best_trans=func[which.max(p.value)]) %>%
+  ungroup() %>%
+  spread(func,p.value) %>%
+  right_join(
+    data.frame(variable=var_num_non_normal)
+    ,by=join_by(variable)
+  ) %>%
+  mutate(
+    p.value=
+      ifelse(
+        best_trans=='log'
+        ,log
+        ,ifelse(
+          best_trans=='sqrt'
+          ,sqrt
+          ,ifelse(
+            best_trans=='inv'
+            ,inv
+            ,ifelse(
+              best_trans=='log2'
+              ,log2
+              ,ifelse(
+                best_trans=='exp'
+                ,exp
+                ,ifelse(
+                  best_trans=='asinh'
+                  ,asinh
+                  ,bct
+                )
+              )
+            )
+          )
+        )
+      )
+  ) %>%
+  select(variable,best_trans,p.value,everything())
+```
+
+Yet, if a variable could be transformed such that it was normally distributed, we chose a transformation technique that was easily interpreted beyond Box-Cox transformation if any.
+
+```{r Best non-BCT transformation, include=FALSE}
+best_trans_non_bct=
+  normal_test_after_trans %>%
+  filter(p.value>0.05) %>%
+  select(-best_trans,-p.value,-bct) %>%
+  gather(func,p.value,-variable) %>%
+  group_by(variable) %>%
+  summarize(best_trans=func[which.max(p.value)])
+```
+
+```{r table-s2, echo=FALSE}
+normal_test_after_trans %>%
+  mutate_at(3:10,round,3) %>%
+  left_join(
+    best_trans_non_bct %>%
+      rename(best_trans2=best_trans)
+    ,by=join_by(variable)
+  ) %>%
+  mutate(
+    variable=
+      paste0(
+        variable
+        ,ifelse(p.value<=0.05,'*','')
+      )
+    ,best_trans=
+      paste0(
+        best_trans
+        ,ifelse(
+          variable%in%best_trans_non_bct$variable
+          & best_trans!=best_trans2
+          ,paste0('/',best_trans2,'†')
+          ,''
+        )
+      )
+  ) %>%
+  select(-best_trans2) %>%
+  arrange(p.value) %>%
+  mutate_at(
+    3:10
+    ,\(x)
+      ifelse(
+        x<0.001
+        ,'<0.001'
+        ,round(x,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S1. Normality test after transformation.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '*, p-value <=0.05, '
+      ,'Shapiro-Wilk normality test; '
+      ,'†, normal without BCT'
+    )
+  ) %>%
+  kable_classic()
+```
+
+```{r Use non-BCT for num var that are normal after transformed, include=FALSE}
+num_trans=
+  best_trans_non_bct %>%
+  lapply(X=seq(nrow(.)),Y=.,\(X,Y)
+    simple_trans %>%
+      c(list(bct=bc_trans)) %>%
+      .[[Y$best_trans[X]]] %>%
+      .[[which(sapply(.,colnames)%in%Y$variable[X])]]
+  ) %>%
+  do.call(cbind,.)
+```
+
+Some numerical variables were not normal after transformation.
+
+```{r Determine num vars that are not normal after transformed, include=FALSE}
+var_num_non_normal_after_trans=
+  normal_test_after_trans %>%
+  filter(p.value<=0.05) %>%
+  pull(variable)
+```
+
+```{r Numerical variables that are not normal after transformation, echo=FALSE}
+var_num_non_normal_after_trans %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+We applied categorization based on common or domain-specific knowledge, avoiding data-driven bias.
+
+```{r Write those are not normal after transformed, eval=FALSE, include=FALSE}
+var_num_non_normal_after_trans %>%
+  data.frame(variable=.) %>%
+  write_csv('inst/ext/var_num_non_normal_after_trans.csv')
+```
+
+```{r Define cats for vars that are not normal after transformed, include=FALSE}
+var_num_non_normal_after_trans_category=
+  read_csv(
+    'inst/ext/var_num_non_normal_after_trans_category.csv'
+    ,show_col_types=F
+  )
+```
+
+```{r Cats for vars that are not normal after transformation, echo=FALSE}
+var_num_non_normal_after_trans_category %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Categorization for variables that '
+        ,'are not normal after transformation.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      'A category was defined if a value was '
+      ,'less or equal to cutoff.'
+    )
+  ) %>%
+  kable_classic()
+```
+
+```{r Transformation by categorization, include=FALSE}
+cat_trans=
+  num_data %>%
+  select_at(var_num_non_normal_after_trans) %>%
+  lapply(X=colnames(.),Y=.,\(X,Y)
+    Y[[X]] %>%
+      cut(
+        breaks=
+          c(-Inf
+            ,var_num_non_normal_after_trans_category %>%
+              filter(variable==X) %>%
+              pull(cutoff)
+          )
+        ,include.lowest=T
+        ,labels=F
+      ) %>%
+      data.frame(cat_num=.) %>%
+      left_join(
+        var_num_non_normal_after_trans_category %>%
+          filter(variable==X) %>%
+          pull(category) %>%
+          factor(unique(.)) %>%
+          data.frame(
+            cat_num=
+              as.numeric(.)
+            ,cat_name=
+              .
+          )
+        ,by=join_by(cat_num)
+      ) %>%
+      pull(cat_name) %>%
+      data.frame(new_value=.) %>%
+      `colnames<-`(X)
+  ) %>%
+  do.call(cbind,.)
+```
+
+```{r Continue to categorical variables, include=FALSE}
+cat_data=
+  cleaned_data %>%
+  .[colnames(.) %>%
+      .[!.%in%var$id]
+  ] %>%
+  .[!sapply(.,is.numeric)]
+```
+
+Another categorical variable was also recategorized into several variables.
+
+```{r Separate rows for cm_other_condition, include=FALSE}
+cm_other_condition=
+  cat_data %>%
+  select(cm_other_condition) %>%
+  mutate(seq=seq(n())) %>%
+  gather(variable,value,-seq) %>%
+  separate_rows(value,sep='\\|') %>%
+  mutate(value2='yes') %>%
+  unite(variable_value,variable,value,sep='_') %>%
+  spread(variable_value,value2,fill='no') %>%
+  gather(variable,value,-seq,-cm_other_condition_no,,-cm_other_condition_NA) %>%
+  mutate(value=ifelse(cm_other_condition_no=='yes','no',value)) %>%
+  mutate(value=ifelse(cm_other_condition_NA=='yes',NA,value)) %>%
+  spread(variable,value) %>%
+  arrange(seq) %>%
+  select(-seq,-cm_other_condition_no,-cm_other_condition_NA) %>%
+  mutate_all(as.factor)
+```
+
+```{r Separated variables for cm_other_condition, echo=FALSE}
+cm_other_condition %>%
+  colnames() %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Combine categorical variables after recategorization, include=FALSE}
+cat_recat=
+  cat_data %>%
+  select(-cm_other_condition) %>%
+  cbind(cm_other_condition)
+```
+
+```{r Finalize transformed data, include=FALSE}
+transformed_data=
+  cleaned_data %>%
+  select_at(var$id) %>%
+  cbind(
+    num_data %>%
+      select_at(
+        colnames(.) %>%
+          setdiff(var_num_non_normal)
+      )
+  ) %>%
+  cbind(num_trans) %>%
+  cbind(cat_trans) %>%
+  cbind(cat_recat) %>%
+  select_at(
+    c(seq(which(colnames(cleaned_data)=='cm_other_condition'))
+      ,which(colnames(.)%in%colnames(cm_other_condition))
+      ,seq(
+        which(colnames(cleaned_data)=='cm_other_condition')+1
+        ,ncol(.)
+      )
+    )
+  )
+```
+
+```{r Update list of covariates due to cm_other_condition, include=FALSE}
+var$covariates2=
+  transformed_data %>%
+  colnames() %>%
+  setdiff(c(var$id,var$strata,var$dependent,var$independent))
+```
+
+# Outlier analysis
+
+After transformation into normal distribution, numerical variables were identified for outliers. A value was an outlier if it was either less than Q1 or greater than Q3 by 1.5 IQR (i.e., Q3-Q1).
+
+```{r Numerical var after transformation, include=FALSE}
+trans_ps_num_data=
+  transformed_data %>%
+  .[colnames(.) %>%
+      .[!.%in%var$id]
+  ] %>%
+  .[sapply(.,is.numeric)]
+```
+
+```{r Identify outliers, include=FALSE}
+outlier_data=
+  trans_ps_num_data %>%
+  mutate(seq=seq(n())) %>%
+  gather(variable,value,-seq) %>%
+  group_by(variable) %>%
+  mutate(
+    q1=
+      value %>%
+      quantile(0.25,na.rm=T)
+    ,q3=
+      value %>%
+      quantile(0.75,na.rm=T)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    outlier=
+      value<(q1-1.5*(q3-q1)) | value>(q3+1.5*(q3-q1))
+  )
+```
+
+```{r Outlier proportions, echo=FALSE}
+outlier_data %>%
+  group_by(variable) %>%
+  summarize(p_outliers=mean(outlier,na.rm=T)) %>%
+  mutate(p_outliers=round(p_outliers*100,2)) %>%
+  arrange(desc(p_outliers)) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Outlier proportions of numerical variables.'
+      )
+    ,
+  ) %>%
+  kable_classic()
+```
+
+We assigned outliers to missing values which would be imputed later as a technique we chose to deal with outliers.
+
+```{r Assign outliers to missing, include=FALSE}
+outlier_removed_data=
+  outlier_data %>%
+  mutate(value=ifelse(outlier,NA,value)) %>%
+  select(seq,variable,value) %>%
+  spread(variable,value) %>%
+  arrange(seq) %>%
+  select(-seq) %>%
+  cbind(
+    transformed_data %>%
+      .[var$id]
+  ) %>%
+  cbind(
+    transformed_data %>%
+      .[colnames(.) %>%
+          .[!.%in%var$id]
+      ] %>%
+      .[!sapply(.,is.numeric)]
+  ) %>%
+  .[colnames(transformed_data)]
+```
+
+# Removal of categorical variables with perfect separation
+
+Some categorical variables were removed if they were perfectly separated across groups of the dependent variable. Perfect separation is likely due to sampling error, except there was a clear justification that explains such data generation was possible. In this study, no such justification existed.
+
+```{r Outcome-wise distribution of categorical variables, include=FALSE}
+outcome_wise_cat_sum=
+  list(
+    var$dependent
+    ,c(var$independent,var$covariates2)
+  ) %>%
+  lapply(X=seq(2),Y=.,\(X,Y)
+    outlier_removed_data %>%
+      .[sapply(.,is.factor)] %>%
+      select_at(
+        colnames(.) %>%
+          .[.%in%Y[[X]]]
+      )
+  ) %>%
+  lapply(X=1,Y=.,\(X,Y)
+    Y[[1]] %>%
+      mutate(seq=seq(n())) %>%
+      left_join(
+        Y[[2]] %>%
+          mutate_all(as.character) %>%
+          mutate(seq=seq(n())) %>%
+          gather(variable,value,-seq)
+        ,by=join_by(seq)
+      )
+  ) %>%
+  .[[1]] %>%
+  group_by_at(
+    colnames(.) %>%
+      .[.!='seq']
+  ) %>%
+  summarize(n=n(),.groups='drop') %>%
+  pivot_wider(
+    names_from=var$dependent
+    ,values_from='n'
+    ,values_fill=0
+  ) %>%
+  `names<-`(
+    c(colnames(.)[1:2]
+      ,c('level1','level2','level3')
+    )
+  )
+```
+
+```{r Perfect sep impossibly fixed by imputation, include=FALSE}
+outcome_wise_cat_sum_ps=
+  outcome_wise_cat_sum %>%
+  mutate(
+    eligible=
+      (!is.na(value) & (level1>0 & level2>0 & level3>0))
+      | is.na(value)
+  ) %>%
+  group_by(variable) %>%
+  filter(
+    (sum(eligible)/n())<1
+    | n()==1
+  ) %>%
+  select(-eligible)
+```
+
+There were some categorical variables with perfect separation.
+
+```{r Determine categorical variables with perfect separation, include=FALSE}
+var_ps=
+  outcome_wise_cat_sum_ps %>%
+  pull(variable) %>%
+  unique()
+```
+
+```{r Categorical variables with perfect separation, echo=FALSE}
+var_ps %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Outcome-wise dist of missingness, include=FALSE}
+outcome_wise_missing_sum=
+  list(
+    var$dependent
+    ,c(var$independent,var$covariates2)
+  ) %>%
+  lapply(X=seq(2),Y=.,\(X,Y)
+    outlier_removed_data %>%
+      select_at(
+        colnames(.) %>%
+          .[.%in%Y[[X]]]
+      )
+  ) %>%
+  lapply(X=1,Y=.,\(X,Y)
+    Y[[1]] %>%
+      mutate(seq=seq(n())) %>%
+      left_join(
+        Y[[2]] %>%
+          mutate_all(is.na) %>%
+          mutate_all(as.numeric) %>%
+          mutate(seq=seq(n())) %>%
+          gather(variable,value,-seq) %>%
+          mutate_at('value',as.factor)
+        ,by=join_by(seq)
+      )
+  ) %>%
+  .[[1]] %>%
+  group_by_at(
+    colnames(.) %>%
+      .[.!='seq']
+  ) %>%
+  summarize(n=n(),.groups='drop') %>%
+  pivot_wider(
+    names_from=var$dependent
+    ,values_from='n'
+    ,values_fill=0
+  ) %>%
+  `names<-`(
+    c(colnames(.)[1:2]
+      ,c('level1','level2','level3')
+    )
+  )
+```
+
+We also checked if perfect separation existed for the missingness of the variables. We would assess a missingness later to check if a variable was missing completely at random.
+
+```{r Perfect sep of missingness, include=FALSE}
+outcome_wise_missing_sum_ps=
+  outcome_wise_missing_sum %>%
+  group_by(variable) %>%
+  filter(!(level1>0 & level2>0 & level3>0))
+```
+
+```{r Determine missingness with perfect separation, include=FALSE}
+var_missing_ps=
+  outcome_wise_missing_sum_ps %>%
+  pull(variable) %>%
+  unique()
+```
+
+Nevertheless, only 1 missing value for plt, which was considerably negligible. While 15 non-missing values of alb and 7 and 5 missing values of respectively hb and wbc were perfectly separated, we also considered this negligible.
+
+```{r missingness with perfect separation, echo=FALSE}
+var_missing_ps %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+Eventually, we excluded categorical variables with perfect separation.
+
+```{r Remove categorical variables with perfect separation, include=FALSE}
+ps_removed_data=
+  outlier_removed_data %>%
+  .[setdiff(colnames(.),var_ps)]
+```
+
+```{r Update list of covariates due to perfect sep, include=FALSE}
+var$covariates3=
+  ps_removed_data %>%
+  colnames() %>%
+  setdiff(c(var$id,var$strata,var$dependent,var$independent))
+```
+
+# Missing data handling
+
+To deal with missing values, we determined if variables were missing completely at random (MCAR). It was identified by identifying if there was an association between its missingness and the values of the dependent and independent variables.
+
+```{r Define unimputed data with primary variables, include=FALSE}
+unimputed_data=
+  outlier_removed_data %>%
+  select_at(c(var$strata,var$dependent,var$independent,var$covariates3))
+```
+
+```{r Identify variables with all values missing, include=FALSE}
+var_all_missing=
+  unimputed_data %>%
+  summarize_all(\(x)all(is.na(x))) %>%
+  gather(variable,all_missing) %>%
+  filter(all_missing) %>%
+  pull(variable)
+```
+
+Several variables had no missing values, including strata, dependent, and independent variables. 
+
+```{r Identify variables with no value missing, include=FALSE}
+var_no_missing=
+  unimputed_data %>%
+  select_at(
+    colnames(.) %>%
+      .[!.%in%var_all_missing]
+  ) %>%
+  summarize_all(\(x)sum(is.na(x))) %>%
+  gather(variable,missing) %>%
+  filter(missing==0) %>%
+  pull(variable)
+```
+
+```{r Variables with no value missing, echo=FALSE}
+var_no_missing %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+Some variables had missing values, all of which were the covariates.
+
+```{r Identify variables with some values missing, include=FALSE}
+var_some_missing=
+  unimputed_data %>%
+  select_at(
+    colnames(.) %>%
+      .[!.%in%var_all_missing]
+  ) %>%
+  summarize_all(\(x)sum(is.na(x))) %>%
+  gather(variable,missing) %>%
+  filter(missing>0) %>%
+  pull(variable)
+```
+
+```{r Variables with some values missing, echo=FALSE}
+var_some_missing %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Association between covar missingness & indep/dep values, include=FALSE}
+missing_cov=
+  c(var$dependent,var$independent) %>%
+  lapply(\(x)
+    var_some_missing %>%
+      intersect(var$covariates3) %>%
+      setdiff(var_missing_ps) %>%
+      lapply(c,x) %>%
+      lapply(\(x)select_at(unimputed_data,x)) %>%
+      lapply(rename_at,1,\(x)'indep_var') %>%
+      lapply(rename_at,2,\(x)'dep_var') %>%
+      lapply(mutate_at,'indep_var',is.na) %>%
+      lapply(mutate_at,'indep_var',as.numeric) %>%
+      lapply(mutate_at,'indep_var',as.factor) %>%
+      lapply(\(x)
+        list(
+          \(x)fisher.test(x$indep_var,x$dep_var)
+          ,\(x)t.test(dep_var~indep_var,data=x)
+        )[[ifelse(is.factor(x$dep_var),1,2)]](x)
+      ) %>%
+      lapply(tidy) %>%
+      lapply(select,p.value,method,alternative) %>%
+      do.call(rbind,.) %>%
+      mutate(
+        dep_var=
+          x
+        ,indep_var=
+          var_some_missing %>%
+          intersect(var$covariates3) %>%
+          setdiff(var_missing_ps)
+      ) %>%
+      select(
+        dep_var,indep_var
+        ,p.value
+        ,method,alternative
+      )
+  ) %>%
+  do.call(rbind,.)
+```
+
+```{r table-s3, echo=FALSE}
+missing_cov %>%
+  mutate_at(3,round,3) %>%
+  select(-method,-alternative) %>%
+  mutate(
+    indep_var=
+      paste0(
+        indep_var
+        ,ifelse(
+          p.value<=0.05
+          ,ifelse(
+            dep_var%in%var$dependent
+            ,'†'
+            ,'*'
+          )
+          ,''
+        )
+      )
+  ) %>%
+  arrange(dep_var,p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S3. Association between covariate missingness '
+        ,'and independent/dependent variable values.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '†, p-value <=0.05, '
+      ,'two-sided, Fisher\'s Exact Test for Count; '
+      ,'*, p-value <=0.05, '
+      ,'two-sided, Welch Two Sample t-test; '
+      ,'CI, confidence interval'
+    )
+  ) %>%
+  kable_classic()
+```
+
+```{r Identify cov vars that are missing completely at random, include=FALSE}
+var_imputed=
+  missing_cov %>%
+  group_by(indep_var) %>%
+  filter(sum(p.value>0.05)==3) %>%
+  ungroup() %>%
+  pull(indep_var) %>%
+  .[!duplicated(.)] %>%
+  c(var_missing_ps)
+```
+
+Some variables with missing values were MCAR; hence, we could apply imputation for these variables.
+
+```{r Cov vars that are missing completely at random, echo=FALSE}
+var_imputed %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+We applied multiple imputation by chained equation (MICE). The missing values were imputed for 10 times by predictive mean matching method.
+
+```{r Multiple imputation by chained equation (MICE) modeling, include=FALSE}
+imputation_model=
+  unimputed_data %>%
+  select_at(c(var$strata,var$dependent,var_no_missing,var_imputed)) %>%
+  mice(
+    m=10
+    ,method='pmm'
+    ,seed=seed
+  )
+```
+
+```{r Obtain imputed data, include=FALSE}
+imputed_data=
+  imputation_model %>%
+  complete()
+```
+
+Statistical tests were also conducted to identify if there were differences before and after imputation for each variable.
+
+```{r Difference of before and after imputation, include=FALSE}
+diff_unimputed_imputed=
+  cbind %>%
+  mapply(
+    unimputed_data %>%
+      select_at(var_imputed) %>%
+      lapply(\(x)data.frame(unimputed=x))
+    ,imputed_data %>%
+      select_at(var_imputed) %>%
+      lapply(\(x)data.frame(imputed=x))
+  ) %>%
+  lapply(X=seq(ncol(.)),Y=.,\(X,Y)Y[,X]) %>%
+  `names<-`(var_imputed) %>%
+  lapply(as.data.frame) %>%
+  lapply(X=names(.),Y=.,\(X,Y)
+    list(
+        \(x)fisher.test(table(x),alternative='less')
+        ,\(x)t.test(x$unimputed %>% .[!is.na(.)],x$imputed)
+      )[[ifelse(is.factor(Y[[X]]$imputed),1,2)]](Y[[X]]) %>%
+      tidy() %>%
+      mutate(var=X) %>%
+      select(
+        var
+        ,estimate,p.value,conf.low,conf.high
+        ,method,alternative
+      )
+  ) %>%
+  do.call(rbind,.)
+```
+
+```{r table-s4, echo=FALSE}
+diff_unimputed_imputed %>%
+  mutate_at(2:5,round,3) %>%
+  mutate(
+    var=
+      paste0(
+        var
+        ,ifelse(
+          p.value<=0.05
+          ,ifelse(
+            method=="Fisher's Exact Test for Count Data"
+            ,'†'
+            ,'*'
+          )
+          ,''
+        )
+      )
+  ) %>%
+  select(-method,-alternative) %>%
+  arrange(p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S4. Difference of before '
+        ,'and after imputation.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '†, p-value <=0.05, '
+      ,'one-sided (less), Fisher\'s Exact Test for Count; '
+      ,'*, p-value <=0.05, '
+      ,'two-sided, Welch Two Sample t-test; '
+      ,'CI, confidence interval'
+    )
+  ) %>%
+  kable_classic()
+```
+
+Data distribution of the imputed variables were mostly similar before and after imputation.
+
+```{r Identify vars that are similar before & after imputation, include=FALSE}
+var_imputed_similar=
+  diff_unimputed_imputed %>%
+  filter(p.value>0.05) %>%
+  pull(var) %>%
+  .[!duplicated(.)]
+```
+
+```{r Vars that are similar before & after imputation, echo=FALSE}
+var_imputed_similar %>%
+  paste0(collapse=', ') %>%
+  cat()
+```
+
+```{r Imputed data including only imputed vars that are similar, include=FALSE}
+imputed_data_similar=
+  imputed_data %>%
+  select_at(
+    colnames(.) %>%
+      .[!.%in%setdiff(var_imputed,var_imputed_similar)]
+  )
+```
+
+```{r Update list of covariates due to unimputed or diff imputed, include=FALSE}
+var$covariates4=
+  imputed_data_similar %>%
+  colnames() %>%
+  setdiff(c(var$id,var$strata,var$dependent,var$independent))
+```
+
+# Descriptive statistics
+
+We included 24 variables for the downstream analyses, including strata, dependent, and independent variables.
+
+```{r Finalize readily-analyzed data, include=FALSE}
+processed_data=
+  outlier_removed_data %>%
+  select_at(var$id) %>%
+  cbind(imputed_data_similar)
+```
+
+```{r List covariates every time a step removing some, include=FALSE}
+covariate=
+  list(
+    raw_data4=
+      raw_data4 %>%
+      colnames() %>%
+      str_replace_all('physician_group','outcome') %>%
+      setdiff(c(var$id,var$strata,var$dependent,var$independent))
+    ,raw_data5=
+      raw_data5 %>%
+      colnames() %>%
+      str_replace_all('physician_group','outcome') %>%
+      setdiff(c(var$id,var$strata,var$dependent,var$independent))
+    ,metadata_redundant=
+      var$covariates
+    ,cm_other_condition=
+      var$covariates2
+    ,perfect_separation=
+      var$covariates3
+    ,unimputed_diff_imputed=
+      var$covariates4
+  )
+```
+
+```{r Number of covariates every time a step removing some, echo=FALSE}
+c('Covariates: '
+  ,covariate$raw_data4 %>%
+    length() %>%
+    paste0('\n')
+  
+  ,'Only 1 category exists: '
+  ,covariate$raw_data4 %>%
+    setdiff(covariate$raw_data5) %>%
+    paste0(collapse=', ') %>%
+    paste0('\n\n')
+  
+  ,'Covariates: '
+  ,covariate$raw_data5 %>%
+    length() %>%
+    paste0('\n')
+  
+  ,'Metadata or redundant variables: '
+  ,covariate$raw_data5 %>%
+    setdiff(covariate$metadata_redundant) %>%
+    paste0(collapse=', ') %>%
+    paste0('\n\n')
+  
+  ,'Covariates: '
+  ,covariate$metadata_redundant %>%
+    length() %>%
+    paste0('\n')
+  
+  ,'Split several variables: '
+  ,covariate$metadata_redundant %>%
+    setdiff(covariate$cm_other_condition) %>%
+    paste0(collapse=', ') %>%
+    paste0('\n\n')
+  
+  ,'Covariates: '
+  ,covariate$cm_other_condition %>%
+    length() %>%
+    paste0('\n')
+  
+  ,'Categorical variables with perfect separation between severity: '
+  ,covariate$cm_other_condition %>%
+    setdiff(covariate$perfect_separation) %>%
+    paste0(collapse=', ') %>%
+    paste0('\n\n')
+  
+  ,'Covariates: '
+  ,covariate$perfect_separation %>%
+    length() %>%
+    paste0('\n')
+  
+  ,'Unimputable or differently imputed variables: '
+  ,covariate$perfect_separation %>%
+    setdiff(covariate$unimputed_diff_imputed) %>%
+    paste0(collapse=', ') %>%
+    paste0('\n\n')
+  
+  ,'Covariates: '
+  ,covariate$unimputed_diff_imputed %>%
+    length() %>%
+    paste0('\n')
+  
+  ,'Used for analysis: '
+  ,var %>%
+    .[!names(.)%in%c('id')] %>%
+    .[!str_detect(names(.),'covariates')|names(.)=='covariates4'] %>%
+    lapply(paste0,collapse=', ') %>%
+    paste0(collapse=', ') %>%
+    paste0('\n\n')
+) %>%
+  matrix(ncol=4,byrow=T) %>%
+  as.data.frame() %>%
+  select(-V1) %>%
+  unite(V34,V3,V4,sep='\n') %>%
+  rename(covariate=V2,description=V34) %>%
+  mutate(step=seq(nrow(.))) %>%
+  select(step,everything()) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Number of covariates every time a step removing some.'
+      )
+    ,
+  ) %>%
+  kable_styling() %>%
+  column_spec(1:3,extra_css='vertical-align: top;') %>%
+  kable_classic()
+```
+
+```{r Outcome-wise average and SD, include=FALSE}
+avg_sd_data=
+  processed_data %>%
+  select_at(
+    colnames(.) %>%
+      .[!.%in%var$id]
+  ) %>%
+  .[sapply(.,is.numeric)] %>%
+  mutate(seq=seq(n())) %>%
+  gather(variable,value,-seq) %>%
+  left_join(
+    best_trans_non_bct
+    ,by=join_by(variable)
+  ) %>%
+  mutate(
+    value=
+      ifelse(
+        is.na(best_trans)
+        ,value
+        ,ifelse(
+          best_trans=='log'
+          ,exp(value)
+          ,ifelse(
+            best_trans=='sqrt'
+            ,value^2
+            ,ifelse(
+              best_trans=='inv'
+              ,1/value
+              ,ifelse(
+                best_trans=='log2'
+                ,2^value
+                ,ifelse(
+                  best_trans=='exp'
+                  ,log(value)
+                  ,sinh(value)
+                )
+              )
+            )
+          )
+        )
+      )
+  ) %>%
+  left_join(
+    processed_data %>%
+      select_at(var$dependent) %>%
+      mutate(seq=seq(n()))
+    ,by=join_by(seq)
+  ) %>%
+  group_by_at(
+    c(var$dependent
+      ,'variable'
+    )
+  ) %>%
+  summarize(
+    avg=mean(value)
+    ,std=sd(value)
+    ,.groups='drop'
+  )
+```
+
+```{r Outcome-wise proportion, include=FALSE}
+prop_n_data=
+  processed_data %>%
+  select_at(
+    colnames(.) %>%
+      .[!.%in%var$id]
+  ) %>%
+  .[!sapply(.,is.numeric)] %>%
+  .[colnames(.)!=var$dependent] %>%
+  mutate_all(as.character) %>%
+  mutate(seq=seq(n())) %>%
+  gather(variable,value,-seq) %>%
+  mutate(value=ifelse(is.na(value),'missing',value)) %>%
+  left_join(
+    processed_data %>%
+      select_at(var$dependent) %>%
+      mutate(seq=seq(n()))
+    ,by=join_by(seq)
+  ) %>%
+  select(-seq) %>%
+  group_by_at(
+    c(var$dependent
+      ,'variable'
+      ,'value'
+    )
+  ) %>%
+  summarize(n=n(),.groups='drop') %>%
+  group_by_at(
+    c(var$dependent
+      ,'variable'
+    )
+  ) %>%
+  mutate(total=sum(n)) %>%
+  ungroup() %>%
+  mutate(p=round(n/total*100,0))
+```
+
+```{r table-1, echo=FALSE}
+list(
+    avg_sd_data %>%
+      mutate_at(c('avg','std'),round,2) %>%
+      mutate(
+        std=paste0('(',as.character(std),')')
+      ) %>%
+      unite(avg_std,avg,std,sep=' ') %>%
+      mutate(value=NA) %>%
+      rename(summary=avg_std)
+    ,prop_n_data %>%
+      select(-total) %>%
+      mutate(
+        n=paste0('(',as.character(n),')')
+      ) %>%
+      unite(p_n,p,n,sep=' ') %>%
+      rename(summary=p_n)
+  ) %>%
+  lapply(rename_at,var$dependent,\(x)'dep_var') %>%
+  lapply(spread,dep_var,summary,fill='0 (0)') %>%
+  do.call(rbind,.) %>%
+  mutate_at('variable',\(x)factor(x,colnames(processed_data))) %>%
+  mutate_at(
+    'value'
+    ,\(x)
+      x %>%
+        factor(
+          unique(
+            c('missing'
+              ,var_num_non_normal_after_trans_category$category
+              ,unique(x) %>%
+                setdiff(var_num_non_normal_after_trans_category$category)
+            )
+          )
+        )
+  ) %>%
+  arrange(variable,value) %>%
+  mutate_at('value',as.character) %>%
+  mutate_at('value',\(x)ifelse(is.na(x),'average (SD)',paste0(x,' % (n)'))) %>%
+  `colnames<-`(
+    colnames(.) %>%
+      data.frame(variable=.) %>%
+      left_join(
+        prop_n_data %>%
+          select_at(c(var$dependent,'total')) %>%
+            `colnames<-`(c('variable','total')) %>%
+            filter(!duplicated(.))
+          ,by=join_by(variable)
+      ) %>%
+      mutate_at('total',\(x)ifelse(is.na(x),'',paste0(' (n=',x,')'))) %>%
+      unite(variable_total,variable,total,sep='') %>%
+      pull(variable_total)
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table 1. Sample characteristics'
+      )
+    ,
+  ) %>%
+  kable_classic()
+```
+
+# Univariate regression analysis
+
+We conducted univariate regression analysis for the independent variables and their covariates. Batch effect might result in unwanted bias and should be adjusted if any.
+
+```{r Redefine outcome to be BC vs. A, include=FALSE}
+processed_data_BC_A=
+  processed_data %>%
+  mutate_at('outcome',as.character) %>%
+  mutate_at('outcome',\(x)ifelse(x=='A','A','BC')) %>%
+  mutate_at('outcome',factor)
+```
+
+```{r Redefine outcome to be C vs. B, include=FALSE}
+processed_data_C_B=
+  processed_data %>%
+  mutate_at('outcome',as.character) %>%
+  filter(outcome%in%c('B','C')) %>%
+  mutate_at('outcome',factor)
+```
+
+```{r Conduct univariate regression analysis, include=FALSE}
+univar_reg=
+  processed_data %>%
+  colnames() %>%
+  .[!.%in%var$id] %>%
+  .[!.%in%var$dependent] %>%
+  `names<-`(as.character(.)) %>%
+  lapply(c,var$dependent) %>%
+  lapply(rev) %>%
+  lapply(paste0,collapse='~') %>%
+  lapply(as.formula) %>%
+  lapply(\(x)
+    list(
+      `BC vs. A`=
+        x %>%
+        glm(
+          family=
+            binomial(link='logit')
+          ,data=
+            processed_data_BC_A
+        )
+      ,`C vs. B`=
+        x %>%
+        glm(
+          family=
+            binomial(link='logit')
+          ,data=
+            processed_data_C_B
+        )
+    )
+  ) %>%
+  lapply(lapply,tidy) %>%
+  lapply(X=names(.),Y=.,\(X,Y)
+    Y[[X]] %>%
+      lapply(X=names(.),Y=.,Z=X,\(X,Y,Z)
+        Y[[X]] %>%
+          mutate(
+            y.level=X
+            ,variable=Z
+          )
+      ) %>%
+      do.call(rbind,.)
+  ) %>%
+  do.call(rbind,.) %>%
+  select(y.level,variable,everything()) %>%
+  mutate(
+    term=
+      str_remove_all(term,variable)
+    ,term=
+      ifelse(term=='','value',term)
+    ,OR=
+      exp(estimate)
+    ,LB=
+      exp(estimate-qnorm(0.975)*std.error)
+    ,UB=
+      exp(estimate+qnorm(0.975)*std.error)
+  )
+```
+
+```{r table-s5, echo=FALSE}
+univar_reg  %>%
+  # filter(variable%in%var$independent) %>%
+  filter(term!='(Intercept)') %>%
+  mutate_at(4:10,round,3) %>%
+  mutate(
+    variable=
+      paste0(
+        variable
+        ,ifelse(p.value<=0.05,'*','')
+      )
+  ) %>%
+  arrange(y.level,p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S6. Univariate regression analysis.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '*, p-value <=0.05.'
+    )
+  ) %>%
+  kable_classic()
+```
+
+```{r Filter significant univariate regression, include=FALSE}
+univar_reg_sig=
+  univar_reg %>%
+  filter(term!='(Intercept)') %>%
+  filter(p.value<=0.05) %>%
+  filter(y.level=='BC vs. A') %>%
+  arrange(p.value)
+```
+
+```{r Obtain variables in sig uni reg results, include=FALSE}
+univar_reg_sig_var=
+  univar_reg_sig %>%
+  pull(variable) %>%
+  .[!duplicated(.)]
+```
+
+# Multivariate regression analysis
+
+A multivariate regression analysis for a variable if it was significantly correlated with the dependent variable by univariate regression analysis. Using correlation tests and its hypothetical direction, we determined covariates for a variable in its multivariate regression analysis.
+
+## Correlation tests
+
+We conducted correlation tests exhaustively for each pair of variables that are significantly associated with the outcome. The multiple-testing effect is corrected by the Benjamini-Hochberg method.
+
+```{r Create a list of possible variable pairs, include=FALSE}
+pair_list=
+  processed_data_BC_A %>%
+  colnames() %>%
+  .[.%in%c(univar_reg_sig_var)] %>%
+  expand.grid(.,.) %>%
+  filter(Var1!=Var2) %>%
+  mutate(
+    Var3=
+      lapply(X=seq(nrow(.)),Y=.$Var1,Z=.$Var2,\(X,Y,Z)sort(c(Y[X],Z[X]))) %>%
+      sapply(paste0,collapse='|')
+  ) %>%
+  filter(!duplicated(Var3)) %>%
+  select(-Var1,-Var2) %>%
+  separate(Var3,c('Var1','Var2'),sep='\\|') %>%
+  arrange(Var1,Var2)
+```
+
+```{r Pair data based on the list, include=FALSE}
+pair_data=
+  processed_data_BC_A %>%
+  lapply(X=seq(nrow(pair_list)),Y=.,\(X,Y)
+    Y %>%
+      select_at(c(pair_list$Var1[X],pair_list$Var2[X]))
+  )
+```
+
+```{r Conduct correlation tests for each pair, include=FALSE}
+pair_analysis=
+  pair_data %>%
+  lapply(\(x)
+    list(
+      pair=
+        x %>%
+        colnames()
+      ,result=
+         try(
+          ifelse(
+            is.numeric(x[[1]]) & is.numeric(x[[2]])
+            ,\(x)cor.test(x[[1]],x[[2]])
+            ,ifelse(
+              is.factor(x[[1]]) & is.factor(x[[2]])
+              ,\(x)fisher.test(x[[1]],x[[2]])
+              ,ifelse(
+                is.numeric(x[[1]]) & is.factor(x[[2]])
+                ,ifelse(
+                  length(levels(x[[2]]))>2
+                  ,\(x)aov(x~y,data=data.frame(x=x[[1]],y=x[[2]]))
+                  ,\(x)t.test(x~y,data=data.frame(x=x[[1]],y=x[[2]]))
+                )
+                ,ifelse(
+                  length(levels(x[[1]]))>2
+                  ,\(x)aov(x~y,data=data.frame(x=x[[2]],y=x[[1]]))
+                  ,\(x)t.test(x~y,data=data.frame(x=x[[2]],y=x[[1]]))
+                )
+              )
+            )
+          )(x)
+        )
+    )
+  )
+```
+
+```{r Tidy up correlation test results, include=FALSE}
+pair_results=
+  pair_analysis %>%
+  lapply(\(x)
+    x$result %>%
+      tidy() %>%
+      slice(1) %>%
+      select(p.value) %>%
+      mutate(Var1=x$pair[1],Var2=x$pair[2])
+  ) %>%
+  do.call(rbind,.) %>%
+  mutate(
+    Var3=
+      lapply(X=seq(nrow(.)),Y=.$Var1,Z=.$Var2,\(X,Y,Z)sort(c(Y[X],Z[X]))) %>%
+      sapply(paste0,collapse='|')
+  ) %>%
+  select(-Var1,-Var2) %>%
+  separate(Var3,c('Var1','Var2'),sep='\\|')
+```
+
+```{r figure-s2, echo=FALSE, fig.height=5, fig.width=7}
+pair_results %>%
+  mutate(
+    sig=
+      ifelse(
+        p.adjust(p.value,'BH')<0.05
+        ,'Significant'
+        ,'Not significant'
+      )
+  ) %>%
+  ggplot(aes(Var1,Var2,fill=sig)) +
+  geom_tile(color='white') +
+  coord_equal() +
+  xlab('') +
+  ylab('') +
+  scale_fill_discrete('Significance*') +
+  theme(
+    panel.grid=
+      element_blank()
+    ,axis.text.x=
+      element_text(angle=90,vjust=0.5,hjust=1)
+  )
+```
+
+Figure S2. Correlation tests. *, corrected for the multiple-testing effect by the Benjamini-Hochberg method.
+
+```{r Write pairs with significant correlations, eval=FALSE, include=FALSE}
+pair_results %>%
+  filter(p.adjust(p.value,'BH')<=0.05) %>%
+  select(Var1,Var2) %>%
+  mutate(
+    Var=
+      mapply(c,Var1,Var2) %>%
+      as.data.frame() %>%
+      lapply(sort) %>%
+      sapply(paste0,collapse='|')
+  ) %>%
+  separate(Var,c('Var1','Var2'),sep='\\|') %>%
+  arrange(Var1,Var2) %>%
+  write_csv('inst/ext/correlation.csv')
+```
+
+Among variable pairs with significant correlation, we determined hypothetical directions of the correlations based on common and domain-specific knowledge.
+
+```{r Determine hypothetical direction of correlation, include=FALSE}
+correlation_direction=
+  read_csv('inst/ext/correlation_direction.csv',show_col_types=F)
+```
+
+```{r table-s6, echo=FALSE}
+correlation_direction %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S5. Hypothetical directions of '
+        ,'the correlations.'
+      )
+    ,
+  ) %>%
+  kable_classic()
+```
+
+The hypothetical directions were used to determine covariates for adjusting the effects of the independent variables. We only included the confounders as the covariates, i.e., common variables that affect both the independent and dependent variables.
+
+```{r Create graph data frame based on hypothetical direction, include=FALSE}
+correlation_graph_df=
+  correlation_direction %>%
+  mutate(
+    from=
+      ifelse(
+        direction=='<-->'
+        ,mapply(c,Var1,Var2) %>%
+          as.data.frame() %>%
+          lapply(sort) %>%
+          sapply(paste0,collapse=', ') %>%
+          sapply(\(x)paste0('common vars of: ',x))
+        ,ifelse(
+          direction=='->'
+          ,Var1
+          ,Var2
+        )
+      )
+    ,to=
+      ifelse(
+        direction=='<-->'
+        ,mapply(c,Var1,Var2) %>%
+          as.data.frame() %>%
+          lapply(sort) %>%
+          sapply(paste0,collapse='|')
+        ,ifelse(
+          direction=='->'
+          ,Var2
+          ,Var1
+        )
+      )
+  ) %>%
+  select(from,to) %>%
+  separate_rows(to,sep='\\|') %>%
+  lapply(X=1,Y=.,\(X,Y)
+    Y %>%
+      filter(str_detect(from,'^common vars of\\: ')) %>%
+      pull(from) %>%
+      .[!duplicated(.)] %>%
+      `names<-`(as.character(.)) %>%
+      lapply(\(x)filter(Y,from==x)) %>%
+      lapply(pull,to) %>%
+      lapply(lapply,\(x)filter(Y,to==x)) %>%
+      lapply(X=names(.),Y=.,\(X,Y)
+        Y[[X]] %>%
+          lapply(\(x)
+            Y[[X]] %>%
+              lapply(pull,from) %>%
+              do.call(intersect,.) %>%
+              setdiff(X) %>%
+              list() %>%
+              c(list(X)) %>%
+              .[[ifelse(length(.[[1]])>0,1,2)]] %>%
+              data.frame(from=.,to=unique(x$to))
+          ) %>%
+          do.call(rbind,.)
+      ) %>%
+      do.call(rbind,.) %>%
+      rbind(
+        Y %>%
+          filter(!str_detect(from,'^common vars of\\: '))
+      ) %>%
+      filter(!duplicated(.))
+  ) %>%
+  .[[1]] %>%
+  rbind(
+    data.frame(
+      from=
+        univar_reg_sig_var
+      ,to=
+        var$dependent
+    )
+  )
+```
+
+```{r figure-s3, echo=FALSE, fig.height=7, fig.width=7}
+set.seed(seed); correlation_graph_df %>%
+  graph_from_data_frame()  %>%
+  ggnetwork(
+    layout=
+      layout_as_tree(
+        .
+        ,root=c(var$dependent)
+        ,mode='in'
+        ,circular=T
+      )
+    ,arrow.gap=0.05
+  ) %>%
+  ggplot(aes(x,y,xend=xend,yend=yend,color=name,fill=name)) +
+  geom_edges(
+    arrow=arrow(length=unit(8,'pt'),type='closed')
+    ,curvature=0.5
+    ,linewidth=1
+    ,show.legend=F
+  ) +
+  geom_nodelabel(
+    aes(label=name)
+    ,color='white'
+    ,show.legend=F
+  ) +
+  theme_void()
+```
+
+Figure S3. Hypothetical directions of the correlations.
+
+```{r Filter sig correlation to indep vars, include=FALSE}
+correlation_to_indep_sig=
+  pair_results %>%
+  filter(p.adjust(p.value,'BH')<=0.05) %>%
+  filter(
+    (Var1%in%univar_reg_sig_var & Var2!=var$dependent)
+    | (Var2%in%univar_reg_sig_var & Var1!=var$dependent)
+  ) %>%
+  mutate(
+    Var=
+      mapply(c,Var1,Var2) %>%
+      as.data.frame() %>%
+      lapply(sort) %>%
+      sapply(paste0,collapse='|')
+  ) %>%
+  separate(Var,c('Var1','Var2'),sep='\\|') %>%
+  arrange(Var1,Var2) %>%
+  left_join(
+    correlation_direction
+    ,by=join_by(Var1,Var2)
+  ) %>%
+  mutate(
+    undirected=
+      mapply(c,Var1,Var2) %>%
+      as.data.frame() %>%
+      lapply(sort) %>%
+      sapply(paste0,collapse='|')
+  ) %>%
+  left_join(
+    correlation_graph_df %>%
+      mutate(
+        undirected=
+          mapply(c,from,to) %>%
+          as.data.frame() %>%
+          lapply(sort) %>%
+          sapply(paste0,collapse='|')
+      )
+    ,by=join_by(undirected)
+  ) %>%
+  mutate(
+    from=
+      ifelse(
+        direction=='<-->'
+        ,paste0(Var1,'|',Var2)
+        ,from
+      )
+    ,to=
+      ifelse(
+        direction=='<-->'
+        ,paste0(Var2,'|',Var1)
+        ,to
+      )
+  ) %>%
+  separate_rows(from,to,sep='\\|') %>%
+  select(-Var1,-Var2,-direction,-undirected) %>%
+  select(from,to,everything()) %>%
+  filter(
+    from%in%univar_reg_sig_var
+    & to%in%univar_reg_sig_var
+  )
+```
+
+```{r table-s7, echo=FALSE}
+correlation_to_indep_sig  %>%
+  filter(to%in%c(var$independent[1])) %>%
+  mutate(p.value=p.value) %>%
+  mutate_at(3,round,3) %>%
+  arrange(p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S7. Significant correlation to '
+        ,'NS1.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      'p-value was corrected for the multiple testing effect '
+      ,'by the Benjamini-Hochberg method.'
+    )
+  ) %>%
+  kable_classic()
+```
+
+## Confounding adjustment
+
+We adjust the effects of `ns1_od` using its confounders.
+
+```{r Determine adjustment, include=FALSE}
+multivar_adjustment=
+  correlation_to_indep_sig %>%
+  select(from,to) %>%
+  right_join(
+    univar_reg_sig %>%
+      select(to=variable)
+    ,by=join_by(to)
+  ) %>%
+  group_by(to) %>%
+  mutate(seq=seq(n())) %>%
+  rbind(
+    univar_reg_sig %>%
+      select(to=variable) %>%
+      mutate(seq=0,from=to)
+  ) %>%
+  arrange(to,seq) %>%
+  group_by(to) %>%
+  summarize(
+    covariates=
+      from %>%
+      .[!is.na(.)] %>%
+      paste0(collapse='+')
+  ) %>%
+  rename(variable=to) %>%
+  mutate(formula=paste0(var$dependent,'~',covariates)) %>%
+  mutate(covariates=str_remove_all(covariates,paste0(variable,'\\+*'))) %>%
+  arrange(
+    factor(
+      variable
+      ,unique(univar_reg_sig$variable)
+    )
+  )
+```
+
+```{r Conduct multivariate regression analysis, include=FALSE}
+multivar_reg=
+  multivar_adjustment %>%
+  pull(formula) %>%
+  `names<-`(multivar_adjustment$variable) %>%
+  lapply(as.formula) %>%
+  lapply(
+    glm
+    ,family=
+      binomial(link='logit')
+    ,data=
+      processed_data_BC_A
+  ) %>%
+  lapply(tidy) %>%
+  lapply(X=names(.),Y=.,\(X,Y)mutate(Y[[X]],variable=X)) %>%
+  do.call(rbind,.) %>%
+  select(variable,everything()) %>%
+  mutate(
+    term=
+      str_remove_all(term,variable)
+    ,term=
+      ifelse(term=='','value',term)
+    ,OR=
+      exp(estimate)
+    ,LB=
+      exp(estimate-qnorm(0.975)*std.error)
+    ,UB=
+      exp(estimate+qnorm(0.975)*std.error)
+  )
+```
+
+```{r table-2, echo=FALSE}
+multivar_reg  %>%
+  filter(variable%in%var$independent[1]) %>%
+  filter(term!='(Intercept)') %>%
+  group_by(variable) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate_at(3:9,round,3) %>%
+  left_join(
+    multivar_adjustment %>%
+      select(-formula)
+    ,by=join_by(variable)
+  ) %>%
+  select(variable,covariates,everything()) %>%
+  mutate(
+    variable=
+      paste0(
+        variable
+        ,ifelse(p.value<=0.05,'*','')
+      )
+  ) %>%
+  arrange(p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table 2. Multivariate regression analysis.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '*, p-value <=0.05.'
+    )
+  ) %>%
+  kable_classic()
+```
+
+```{r Filter significant multivariate regression, include=FALSE}
+multivar_reg_sig=
+  multivar_reg  %>%
+  filter(term!='(Intercept)') %>%
+  group_by(variable) %>%
+  slice(1) %>%
+  ungroup() %>%
+  filter(p.value<=0.05) %>%
+  arrange(p.value)
+```
+
+```{r Obtain variables in sig multi reg results, include=FALSE}
+multivar_reg_sig_var=
+  multivar_reg_sig$variable %>%
+  .[!duplicated(.)]
+```
+
+## Mediation analysis
+
+We adjust the effects of `ns1_od` using its confounders and mediators, including `nst_od`.
+
+```{r table-s8, echo=FALSE}
+correlation_to_indep_sig  %>%
+  filter(from%in%multivar_reg_sig_var) %>%
+  filter(from%in%intersect(var$independent[1],multivar_reg_sig_var)) %>%
+  filter(to%in%univar_reg_sig_var) %>%
+  mutate(p.value=p.value) %>%
+  mutate_at(3,round,3) %>%
+  arrange(p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table S8. Significant correlation from '
+        ,'NS1.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '*, p-value <=0.05.'
+    )
+  ) %>%
+  kable_classic()
+```
+
+```{r Determine adjustment with each mediator, include=FALSE}
+multivar_adjustment_mediator=
+  correlation_to_indep_sig %>%
+  filter(from%in%multivar_reg_sig_var) %>%
+  select(from,to) %>%
+  left_join(
+    multivar_adjustment %>%
+      select(from=variable,covariates)
+    ,by=join_by(from)
+  ) %>%
+  group_by(from,covariates) %>%
+  mutate(seq=seq(n())) %>%
+  ungroup() %>%
+  rbind(
+    group_by(.,from,covariates) %>%
+      summarize(
+        to=
+          to %>%
+          .[!is.na(.)] %>%
+          paste0(collapse='+')
+        ,seq=
+          max(seq)+1
+        ,.groups='drop'
+      )
+  ) %>%
+  arrange(from,seq) %>%
+  rename(variable=from) %>%
+  rename(mediators=to) %>%
+  rename(confounders=covariates) %>%
+  mutate(
+    formula=
+      paste0(
+        var$dependent
+        ,'~'
+        ,mapply(
+          FUN=
+            \(x,y,z)
+              c(x,y,z) %>%
+                .[.!=''] %>%
+                paste0(collapse='+')
+          ,variable
+          ,confounders
+          ,mediators
+        )
+      )
+  ) %>%
+  select(variable,confounders,mediators, formula) %>%
+  arrange(
+    factor(
+      variable
+      ,unique(multivar_reg_sig$variable)
+    )
+  )
+```
+
+Since the sample size only allowed for 1 covariate in addition to `ns1_od`, we reduced the number of covariates without leaking information of the dependent variable as the outcome. Principal component analysis was conducted for this purpose.
+
+```{r Conduct PCA, include=FALSE}
+pca=
+  multivar_adjustment_mediator %>%
+  unite(covariates,confounders,mediators,sep='+') %>%
+  mutate_at('covariates',str_remove_all,'^\\+|\\+$') %>%
+  pull(covariates) %>%
+  `names<-`(
+    paste0(
+      multivar_adjustment_mediator$variable
+      ,'|'
+      ,multivar_adjustment_mediator$mediators
+    )
+  ) %>%
+  lapply(str_split,pattern='\\+') %>%
+  lapply(\(x)select_at(processed_data_BC_A,x[[1]])) %>%
+  lapply(mutate_if,is.numeric,scale) %>%
+  lapply(mutate_if,is.factor,\(x)ifelse(x==levels(x)[2],1,0)) %>%
+  lapply(prcomp)
+```
+
+```{r figure-s4, echo=FALSE, fig.height=3, fig.width=4}
+ggarrange(
+  pca %>%
+    lapply(\(x)x$rotation) %>%
+    lapply(as.data.frame) %>%
+    lapply(X=names(.),Y=.,\(X,Y)mutate(Y[[X]],mediators=X)) %>%
+    lapply(rownames_to_column,var='term') %>%
+    lapply(gather,dimension,weight,-term,-mediators) %>%
+    do.call(rbind,.) %>%
+    filter(str_detect(mediators,paste0('^',var$independent[1]))) %>%
+    inner_join(
+      multivar_adjustment_mediator %>%
+        filter(str_count(formula,'\\+')>1) %>%
+        mutate(mediators=paste0(variable,'|',mediators))
+      ,by=join_by(mediators)
+    ) %>%
+    mutate(
+      dimension=
+        dimension %>%
+        factor(
+          unique(.) %>%
+            sort() %>%
+            rev()
+        )
+    ) %>%
+    ggplot(aes(term,dimension,fill=weight)) +
+    geom_tile() +
+    facet_grid(mediators~.,scales='free_y',space='free_y') +
+    scale_x_discrete('Covariate') +
+    scale_y_discrete('') +
+    scale_fill_gradient2(
+      'Weight'
+      ,low='blue'
+      ,mid='black'
+      ,high='red'
+      ,midpoint=0
+    ) +
+    theme(
+      strip.text=
+        element_blank()
+      ,legend.position=
+        'bottom'
+    )
+  ,ggarrange(
+    pca %>%
+      sapply(\(x)
+        (x$sdev^2/sum(x$sdev^2)*100) %>%
+          `names<-`(colnames(x$rotation))
+      ) %>%
+      lapply(X=names(.),Y=.,\(X,Y)data.frame(mediators=X,pve=Y[[X]])) %>%
+      lapply(rownames_to_column,var='pc') %>%
+      do.call(rbind,.) %>%
+      filter(str_detect(mediators,paste0('^',var$independent[1]))) %>%
+      inner_join(
+        multivar_adjustment_mediator %>%
+          filter(str_count(formula,'\\+')>1) %>%
+          mutate(mediators=paste0(variable,'|',mediators))
+        ,by=join_by(mediators)
+      ) %>%
+      mutate(
+          pc=
+            pc %>%
+            factor(
+              unique(.) %>%
+                sort() %>%
+                rev()
+            )
+        ) %>%
+        ggplot(aes(pc,pve)) +
+        geom_col() +
+        facet_grid(mediators~.,scales='free_y',space='free_y') +
+        coord_flip() +
+        scale_x_discrete('') +
+        scale_y_continuous('Variance explained (%)') +
+        theme(
+          axis.text.y=
+            element_blank()
+          ,strip.text=
+            element_blank()
+        )
+      ,NULL
+      ,ncol=1
+      ,nrow=2
+      ,widths=c(4)
+      ,heights=c(2.25,0.75)
+    )
+    ,ncol=2
+    ,nrow=1
+    ,widths=c(2,2)
+    ,heights=c(3)
+    ,labels=LETTERS[1:2]
+  )
+```
+
+Figure S3. Principal component analysis: (A) proportion variance explained, and (B) weights. The y-axis is shared between A and B.
+
+All the covariates of `ns1_od` could be reduced into 1 covariate using PC1.
+
+Now, we conducted mediation analysis whether `ns1_od` effect on the dependent variable persisted without the mediators' effect, including `nst_od`.
+
+```{r Conduct mediation analysis, include=FALSE}
+mediation=
+  multivar_adjustment_mediator %>%
+  mutate(
+    formula=
+      ifelse(
+        str_count(formula,'\\+')>1
+        ,paste0(
+          'outcome'
+          ,'~'
+          ,variable
+          ,'+'
+          ,'PC1'
+        )
+        ,formula
+      )
+  ) %>%
+  pull(formula) %>%
+  `names<-`(
+    paste0(
+      multivar_adjustment_mediator$variable
+      ,'|'
+      ,multivar_adjustment_mediator$mediators
+    )
+  ) %>%
+  lapply(as.formula) %>%
+  lapply(X=names(.),Y=.,\(X,Y)
+    Y[[X]] %>%
+      glm(
+        family=
+          binomial(link='logit')
+        ,data=
+          processed_data_BC_A %>%
+          cbind(
+            pca[[X]]$x %>%
+              as.data.frame()
+          )
+      )
+  ) %>%
+  `names<-`(
+    paste0(
+      multivar_adjustment_mediator$variable
+      ,'|'
+      ,multivar_adjustment_mediator$mediators
+    )
+  ) %>%
+  lapply(tidy) %>%
+  lapply(X=names(.),Y=.,\(X,Y)mutate(Y[[X]],variable=X)) %>%
+  do.call(rbind,.) %>%
+  select(variable,everything()) %>%
+  separate(variable,c('variable','mediators'),sep='\\|') %>%
+  mutate(
+    term=
+      str_remove_all(term,variable)
+    ,term=
+      ifelse(term=='','value',term)
+    ,OR=
+      exp(estimate)
+    ,LB=
+      exp(estimate-qnorm(0.975)*std.error)
+    ,UB=
+      exp(estimate+qnorm(0.975)*std.error)
+  )
+```
+
+```{r table-3, echo=FALSE}
+mediation  %>%
+  filter(variable%in%var$independent[1]) %>%
+  filter(term!='(Intercept)') %>%
+  group_by(variable,mediators) %>%
+  slice(1) %>%
+  ungroup() %>%
+  mutate_at(4:10,round,3) %>%
+  left_join(
+    multivar_adjustment %>%
+      select(-formula)
+    ,by=join_by(variable)
+  ) %>%
+  select(variable,covariates,everything()) %>%
+  mutate(
+    variable=
+      paste0(
+        variable
+        ,ifelse(p.value<=0.05,'*','')
+      )
+  ) %>%
+  arrange(p.value) %>%
+  mutate(
+    p.value=
+      ifelse(
+        p.value<0.001
+        ,'<0.001'
+        ,round(p.value,3)
+      ) %>%
+      as.character()
+  ) %>%
+  kable(
+    format=
+      kable_format
+    ,caption=
+      paste0(
+        'Table 3. Mediation analysis.'
+      )
+    ,
+  ) %>%
+  footnote(
+    paste0(
+      '*, p-value <=0.05.'
+    )
+  ) %>%
+  kable_classic()
+```
+
+There was no significant effect of `ns1_od` on the dependent variable beyond the `nst_od` effect. In contrast, the effect of `ns1_od` on the dependent variable persisted without another mediator.
+
+# Conclusion
+
+The effect of `ns1_od` on the dependent variable was mediated by `nst_od`.
+
+# Session information
+
+```{r Show packages, echo=FALSE}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

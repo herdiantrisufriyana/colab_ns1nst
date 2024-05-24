@@ -1,0 +1,15 @@
+Var1,Var2
+age,cm_dm
+age,cm_hyp
+age,ns1_od
+age,plt
+alb,cm_dm
+alb,cm_hyp
+alb,got
+alb,ns1_od
+alb,nst_od
+bil_t,nst_od
+bil_t,plt
+cm_dm,cm_hyp
+got,plt
+ns1_od,nst_od
