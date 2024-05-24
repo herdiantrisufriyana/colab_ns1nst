@@ -1,0 +1,88 @@
+variable,value_old,value_new
+batch,Old,first
+batch,New,second
+physician_group,B,B
+physician_group,A,A
+physician_group,C,C
+physician_group,B1,B1
+physician_group,A1,A1
+sex,M,M
+sex,F,F
+severe,0,no
+severe,1,yes
+ammonia,NA,
+cm_dm,0,no
+cm_dm,1,yes
+cm_dm,1.DM,yes
+cm_crf,0,no
+cm_crf,1,yes
+cm_hyp,0,no
+cm_hyp,1,yes
+cm_hbv,NA,
+cm_hbv,0,no
+cm_hbv,1,yes
+cm_hcv,NA,
+cm_hcv,0,no
+cm_hcv,1,yes
+cm_malignancy,0,no
+cm_cva,0,no
+cm_cva,1,yes
+cm_copd,0,no
+cm_copd,1,yes
+cm_asthma,NA,
+cm_asthma,0,no
+cm_gout,NA,
+cm_gout,0,no
+cm_duodenal_ulcer,0,no
+cm_other_status,NA,
+cm_other_status,0,no
+cm_other_status,1,yes
+cm_other_condition,NA,
+cm_other_condition,0,no
+cm_other_condition,CKD,ckd
+cm_other_condition,BPH,bph
+cm_other_condition,CKD+Colon cancer,ckd|colon_cancer
+cm_other_condition,AF,af
+cm_other_condition,ESRD,esrd
+cm_other_condition,CHF+黃疸,chf|jaundice
+cm_other_condition,Grave's disease,grave_disease
+cm_other_condition,ARF,arf
+cm_other_condition,CHF+CAD,chf|cad
+cm_other_condition,Dementia,dementia
+cm_other_condition,CHF,chf
+cm_other_condition,CAD+Myasthenia gravis,cad|myasthenia_gravis
+cm_other_condition,pancreatic head cancer,pancreatic_head_cancer
+cm_other_condition,HIVD+Bil DJD over knee,hivd|djd_bil_knee
+cm_other_condition,Renal stones,renal_stones
+cm_other_condition,CAD,cad
+cm_other_condition,G6PD,g6pd
+cm_other_condition,Layngeal tumor,laryngeal_tumor
+cm_other_condition,Bil OA kness+r?�t renal stone,djd_bil_knee|renal_stones
+cm_other_condition,SLE,sle
+cm_other_condition,CAD+OCHA,cad|ocha
+cm_other_condition,Epilepsy,epilepsy
+cm_other_condition,TB,tb
+cm_other_condition,Parkinsonism,parkinsonism
+ascitis,0,no
+ascitis,1,yes
+pi_effusion,0,no
+pi_effusion,1,yes
+ns1,NA,
+ns1,0,no
+ns1,1,yes
+igg,NA,
+igg,1,yes
+igg,0,no
+igm,NA,
+igm,1,yes
+igm,0,no
+diag_test,PCR(+),pcr
+diag_test,"ELISA-IgG,IgM(+)",elisa_igg|elisa_igm
+diag_test,NA,
+diag_test,ELISA-IgM(+),elisa_igm
+diag_test,NS1(+),ns1
+diag_test,NS1(+)/PCR(+),ns1|pcr
+diag_test,"NS1(+),PCR(+)",ns1|pcr
+diag_test,"ELISA-IgM,IgG(+),PCR(+)",elisa_igg|elisa_igm|pcr
+infection,secondary,secondary
+infection,primary,primary
