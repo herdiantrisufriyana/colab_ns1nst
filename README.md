@@ -20,4 +20,4 @@ renv::restore()
 
 # Analytical codes
 
-All the codes are in `colab_ns1nst.Rmd`. [**Click here**](https://htmlpreview.github.io/?https://github.com/herdiantrisufriyana/colab_ns1nst/blob/master/doc/colab_ns1nst.html) for the HTML preview.
+All the codes are in `colab_ns1nst.Rmd`. [**Click here**](https://htmlpreview.github.io/?https://github.com/herdiantrisufriyana/colab_ns1nst/tree/master/doc) for the HTML preview.
