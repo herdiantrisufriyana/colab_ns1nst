@@ -1,0 +1,5 @@
+Var1,Var2,direction,hypothesis
+age,ns1_od,->,age affects NS1
+age,outcome,->,older patients are likely poorer outcome
+ns1_od,outcome,->,NS1 affects outcome
+outcome,sex,<-,sex affects outcome
