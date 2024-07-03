@@ -1,0 +1,48 @@
+colname_old
+SAMPLE ORDER STATUS
+sample number
+檢體編號 (Specimen number)
+何醫師分組 (Physician Ho group)
+性別 (gender)
+年齡 (age)
+Day0   (-發燒日/fever day)
+住院天數 (The number of days in hospital)
+ICU
+重症 (serious)
+WBC
+Hb
+Hct
+Platelet
+GOT
+GPT
+Bil-T
+Bil-D
+Ammonia
+BUN
+Cr
+APTT
+PT
+Albumin
+1.DM
+2.CRF
+3.Hypertension
+4.HBV
+HCV
+5.Malignancy
+6.CVA
+7.COPD
+Asthma
+8.Gout
+9.Duodenal ulcer
+10.Other...36
+10.Other...37
+Ascitis
+PI effusion
+NS1 _OD
+NST_OD
+NS1
+IgG
+IgM
+法傳 (Diagnostic Test)
+病毒荷量 (Viral Load)
+Infection Status

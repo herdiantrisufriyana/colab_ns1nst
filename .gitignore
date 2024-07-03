@@ -62,4 +62,5 @@ renv/*
 archive*
 
 # Ignore raw data
-inst/extras/raw_data.xlsx
+inst/extdata/raw_data.xlsx
+inst/extdata2/raw_data.xlsx
