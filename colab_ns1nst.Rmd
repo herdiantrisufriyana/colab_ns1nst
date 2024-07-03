@@ -53,14 +53,14 @@ There are 92 rows and 47 columns in raw data.
 
 ```{r Load raw data, include=FALSE}
 raw_data=
-  read_xlsx('inst/ext/raw_data.xlsx',skip=1)
+  read_xlsx('inst/extdata/raw_data.xlsx',skip=1)
 ```
 
 ```{r Write original column names, eval=FALSE, include=FALSE}
 raw_data %>%
   colnames() %>%
   data.frame(colname_old=.) %>%
-  write_csv('inst/ext/raw_data_colnames_old.csv')
+  write_csv('inst/extdata/raw_data_colnames_old.csv')
 ```
 
 ```{r Modify column names, include=FALSE}
@@ -70,7 +70,7 @@ raw_data2=
     colnames(.) %>%
       data.frame(colname_old=.) %>%
       left_join(
-        read_csv('inst/ext/raw_data_colnames_new.csv',show_col_types=F)
+        read_csv('inst/extdata/raw_data_colnames_new.csv',show_col_types=F)
         ,by=join_by(colname_old)
       ) %>%
       pull(colname_new)
@@ -78,7 +78,7 @@ raw_data2=
 ```
 
 ```{r Variable description, echo=FALSE}
-read_csv('inst/ext/raw_data_colnames_new.csv',show_col_types=F) %>%
+read_csv('inst/extdata/raw_data_colnames_new.csv',show_col_types=F) %>%
   mutate(no=seq(nrow(.))) %>%
   select(no,variable=colname_new,description=colname_old) %>%
   kable(
@@ -151,7 +151,7 @@ raw_data3$non_numeric %>%
       variable %>%
       str_remove_all('\\.[:digit:]+$')
   ) %>%
-  write_csv('inst/ext/raw_data_non_numeric_values_old.csv')
+  write_csv('inst/extdata/raw_data_non_numeric_values_old.csv')
 ```
 
 ```{r Modify non-numeric values, include=FALSE}
@@ -168,7 +168,7 @@ raw_data4=
       lapply(
         left_join
         ,read_csv(
-          'inst/ext/raw_data_non_numeric_values_new.csv'
+          'inst/extdata/raw_data_non_numeric_values_new.csv'
           ,show_col_types=F
         )
         ,by=join_by(variable,value_old)
@@ -279,12 +279,12 @@ var$strata=
 
 var$dependent=
   cleaned_data %>%
-  select(outcome) %>%
+  select(nst_od) %>%
   colnames()
 
 var$independent=
   cleaned_data %>%
-  select(ns1_od,nst_od) %>%
+  select(ns1_od,outcome) %>%
   colnames()
 
 var$covariates=
@@ -783,13 +783,13 @@ We applied categorization based on common or domain-specific knowledge, avoiding
 ```{r Write those are not normal after transformed, eval=FALSE, include=FALSE}
 var_num_non_normal_after_trans %>%
   data.frame(variable=.) %>%
-  write_csv('inst/ext/var_num_non_normal_after_trans.csv')
+  write_csv('inst/extdata/var_num_non_normal_after_trans.csv')
 ```
 
 ```{r Define cats for vars that are not normal after transformed, include=FALSE}
 var_num_non_normal_after_trans_category=
   read_csv(
-    'inst/ext/var_num_non_normal_after_trans_category.csv'
+    'inst/extdata/var_num_non_normal_after_trans_category.csv'
     ,show_col_types=F
   )
 ```
@@ -1016,6 +1016,32 @@ outcome_wise_cat_sum=
   ) %>%
   lapply(X=seq(2),Y=.,\(X,Y)
     outlier_removed_data %>%
+      mutate(
+        nst_od=
+          nst_od %>%
+          cut(
+            breaks=
+              c(-Inf
+                ,quantile(.,0.5)
+                ,Inf
+              )
+            ,include.lowest=T
+            ,labels=F
+          ) %>%
+          data.frame(cat_num=.) %>%
+          left_join(
+            c('<=median','>median') %>%
+              factor(unique(.)) %>%
+              data.frame(
+                cat_num=
+                  as.numeric(.)
+                ,cat_name=
+                  .
+              )
+            ,by=join_by(cat_num)
+          ) %>%
+          pull(cat_name)
+      ) %>%
       .[sapply(.,is.factor)] %>%
       select_at(
         colnames(.) %>%
@@ -1039,6 +1065,7 @@ outcome_wise_cat_sum=
       .[.!='seq']
   ) %>%
   summarize(n=n(),.groups='drop') %>%
+  
   pivot_wider(
     names_from=var$dependent
     ,values_from='n'
@@ -1046,7 +1073,7 @@ outcome_wise_cat_sum=
   ) %>%
   `names<-`(
     c(colnames(.)[1:2]
-      ,c('level1','level2','level3')
+      ,c('level1','level2')
     )
   )
 ```
@@ -1056,7 +1083,7 @@ outcome_wise_cat_sum_ps=
   outcome_wise_cat_sum %>%
   mutate(
     eligible=
-      (!is.na(value) & (level1>0 & level2>0 & level3>0))
+      (!is.na(value) & (level1>0 & level2>0))
       | is.na(value)
   ) %>%
   group_by(variable) %>%
@@ -1090,6 +1117,32 @@ outcome_wise_missing_sum=
   ) %>%
   lapply(X=seq(2),Y=.,\(X,Y)
     outlier_removed_data %>%
+      mutate(
+        nst_od=
+          nst_od %>%
+          cut(
+            breaks=
+              c(-Inf
+                ,quantile(.,0.5)
+                ,Inf
+              )
+            ,include.lowest=T
+            ,labels=F
+          ) %>%
+          data.frame(cat_num=.) %>%
+          left_join(
+            c('<=median','>median') %>%
+              factor(unique(.)) %>%
+              data.frame(
+                cat_num=
+                  as.numeric(.)
+                ,cat_name=
+                  .
+              )
+            ,by=join_by(cat_num)
+          ) %>%
+          pull(cat_name)
+      ) %>%
       select_at(
         colnames(.) %>%
           .[.%in%Y[[X]]]
@@ -1121,7 +1174,7 @@ outcome_wise_missing_sum=
   ) %>%
   `names<-`(
     c(colnames(.)[1:2]
-      ,c('level1','level2','level3')
+      ,c('level1','level2')
     )
   )
 ```
@@ -1132,7 +1185,7 @@ We also checked if perfect separation existed for the missingness of the variabl
 outcome_wise_missing_sum_ps=
   outcome_wise_missing_sum %>%
   group_by(variable) %>%
-  filter(!(level1>0 & level2>0 & level3>0))
+  filter(!(level1>0 & level2>0))
 ```
 
 ```{r Determine missingness with perfect separation, include=FALSE}
@@ -1142,7 +1195,7 @@ var_missing_ps=
   unique()
 ```
 
-Nevertheless, only 1 missing value for plt, which was considerably negligible. While 15 non-missing values of alb and 7 and 5 missing values of respectively hb and wbc were perfectly separated, we also considered this negligible.
+Nevertheless, only 1 missing value for plt, which was considerably negligible.
 
 ```{r missingness with perfect separation, echo=FALSE}
 var_missing_ps %>%
@@ -1438,7 +1491,7 @@ diff_unimputed_imputed %>%
   kable_classic()
 ```
 
-Data distribution of the imputed variables were mostly similar before and after imputation.
+Data distribution of the imputed variables were similar before and after imputation.
 
 ```{r Identify vars that are similar before & after imputation, include=FALSE}
 var_imputed_similar=
@@ -1472,7 +1525,7 @@ var$covariates4=
 
 # Descriptive statistics
 
-We included 24 variables for the downstream analyses, including strata, dependent, and independent variables.
+We included 27 variables for the downstream analyses, including strata, dependent, and independent variables.
 
 ```{r Finalize readily-analyzed data, include=FALSE}
 processed_data=
@@ -1639,6 +1692,32 @@ avg_sd_data=
   ) %>%
   left_join(
     processed_data %>%
+      mutate(
+        nst_od=
+          nst_od %>%
+          cut(
+            breaks=
+              c(-Inf
+                ,quantile(.,0.5)
+                ,Inf
+              )
+            ,include.lowest=T
+            ,labels=F
+          ) %>%
+          data.frame(cat_num=.) %>%
+          left_join(
+            c('<=median','>median') %>%
+              factor(unique(.)) %>%
+              data.frame(
+                cat_num=
+                  as.numeric(.)
+                ,cat_name=
+                  .
+              )
+            ,by=join_by(cat_num)
+          ) %>%
+          pull(cat_name)
+      ) %>%
       select_at(var$dependent) %>%
       mutate(seq=seq(n()))
     ,by=join_by(seq)
@@ -1670,6 +1749,32 @@ prop_n_data=
   mutate(value=ifelse(is.na(value),'missing',value)) %>%
   left_join(
     processed_data %>%
+      mutate(
+        nst_od=
+          nst_od %>%
+          cut(
+            breaks=
+              c(-Inf
+                ,quantile(.,0.5)
+                ,Inf
+              )
+            ,include.lowest=T
+            ,labels=F
+          ) %>%
+          data.frame(cat_num=.) %>%
+          left_join(
+            c('<=median','>median') %>%
+              factor(unique(.)) %>%
+              data.frame(
+                cat_num=
+                  as.numeric(.)
+                ,cat_name=
+                  .
+              )
+            ,by=join_by(cat_num)
+          ) %>%
+          pull(cat_name)
+      ) %>%
       select_at(var$dependent) %>%
       mutate(seq=seq(n()))
     ,by=join_by(seq)
@@ -1761,22 +1866,6 @@ list(
 
 We conducted univariate regression analysis for the independent variables and their covariates. Batch effect might result in unwanted bias and should be adjusted if any.
 
-```{r Redefine outcome to be BC vs. A, include=FALSE}
-processed_data_BC_A=
-  processed_data %>%
-  mutate_at('outcome',as.character) %>%
-  mutate_at('outcome',\(x)ifelse(x=='A','A','BC')) %>%
-  mutate_at('outcome',factor)
-```
-
-```{r Redefine outcome to be C vs. B, include=FALSE}
-processed_data_C_B=
-  processed_data %>%
-  mutate_at('outcome',as.character) %>%
-  filter(outcome%in%c('B','C')) %>%
-  mutate_at('outcome',factor)
-```
-
 ```{r Conduct univariate regression analysis, include=FALSE}
 univar_reg=
   processed_data %>%
@@ -1788,40 +1877,19 @@ univar_reg=
   lapply(rev) %>%
   lapply(paste0,collapse='~') %>%
   lapply(as.formula) %>%
-  lapply(\(x)
-    list(
-      `BC vs. A`=
-        x %>%
-        glm(
-          family=
-            binomial(link='logit')
-          ,data=
-            processed_data_BC_A
-        )
-      ,`C vs. B`=
-        x %>%
-        glm(
-          family=
-            binomial(link='logit')
-          ,data=
-            processed_data_C_B
-        )
-    )
+  lapply(
+    lm
+    ,data=processed_data
   ) %>%
-  lapply(lapply,tidy) %>%
+  lapply(tidy) %>%
   lapply(X=names(.),Y=.,\(X,Y)
     Y[[X]] %>%
-      lapply(X=names(.),Y=.,Z=X,\(X,Y,Z)
-        Y[[X]] %>%
-          mutate(
-            y.level=X
-            ,variable=Z
-          )
-      ) %>%
-      do.call(rbind,.)
+      mutate(
+        variable=X
+      )
   ) %>%
   do.call(rbind,.) %>%
-  select(y.level,variable,everything()) %>%
+  select(variable,everything()) %>%
   mutate(
     term=
       str_remove_all(term,variable)
@@ -1838,9 +1906,8 @@ univar_reg=
 
 ```{r table-s5, echo=FALSE}
 univar_reg  %>%
-  # filter(variable%in%var$independent) %>%
   filter(term!='(Intercept)') %>%
-  mutate_at(4:10,round,3) %>%
+  mutate_at(3:9,round,3) %>%
   mutate(
     variable=
       paste0(
@@ -1848,7 +1915,7 @@ univar_reg  %>%
         ,ifelse(p.value<=0.05,'*','')
       )
   ) %>%
-  arrange(y.level,p.value) %>%
+  arrange(p.value) %>%
   mutate(
     p.value=
       ifelse(
@@ -1880,7 +1947,6 @@ univar_reg_sig=
   univar_reg %>%
   filter(term!='(Intercept)') %>%
   filter(p.value<=0.05) %>%
-  filter(y.level=='BC vs. A') %>%
   arrange(p.value)
 ```
 
@@ -1901,7 +1967,7 @@ We conducted correlation tests exhaustively for each pair of variables that are 
 
 ```{r Create a list of possible variable pairs, include=FALSE}
 pair_list=
-  processed_data_BC_A %>%
+  processed_data %>%
   colnames() %>%
   .[.%in%c(univar_reg_sig_var)] %>%
   expand.grid(.,.) %>%
@@ -1919,7 +1985,7 @@ pair_list=
 
 ```{r Pair data based on the list, include=FALSE}
 pair_data=
-  processed_data_BC_A %>%
+  processed_data %>%
   lapply(X=seq(nrow(pair_list)),Y=.,\(X,Y)
     Y %>%
       select_at(c(pair_list$Var1[X],pair_list$Var2[X]))
@@ -2021,14 +2087,14 @@ pair_results %>%
   ) %>%
   separate(Var,c('Var1','Var2'),sep='\\|') %>%
   arrange(Var1,Var2) %>%
-  write_csv('inst/ext/correlation.csv')
+  write_csv('inst/extdata/correlation.csv')
 ```
 
 Among variable pairs with significant correlation, we determined hypothetical directions of the correlations based on common and domain-specific knowledge.
 
 ```{r Determine hypothetical direction of correlation, include=FALSE}
 correlation_direction=
-  read_csv('inst/ext/correlation_direction.csv',show_col_types=F)
+  read_csv('inst/extdata/correlation_direction.csv',show_col_types=F)
 ```
 
 ```{r table-s6, echo=FALSE}
@@ -2217,7 +2283,7 @@ correlation_to_indep_sig=
 
 ```{r table-s7, echo=FALSE}
 correlation_to_indep_sig  %>%
-  filter(to%in%c(var$independent[1])) %>%
+  filter(to%in%c(var$independent)) %>%
   mutate(p.value=p.value) %>%
   mutate_at(3,round,3) %>%
   arrange(p.value) %>%
@@ -2236,7 +2302,7 @@ correlation_to_indep_sig  %>%
     ,caption=
       paste0(
         'Table S7. Significant correlation to '
-        ,'NS1.'
+        ,'independent variables.'
       )
     ,
   ) %>%
@@ -2251,15 +2317,15 @@ correlation_to_indep_sig  %>%
 
 ## Confounding adjustment
 
-We adjust the effects of `ns1_od` using its confounders.
+We adjust the effects of independent variables and other variables using their confounders.
 
 ```{r Determine adjustment, include=FALSE}
 multivar_adjustment=
   correlation_to_indep_sig %>%
   select(from,to) %>%
   right_join(
-    univar_reg_sig %>%
-      select(to=variable)
+    univar_reg_sig_var %>%
+      data.frame(to=.)
     ,by=join_by(to)
   ) %>%
   group_by(to) %>%
@@ -2295,11 +2361,9 @@ multivar_reg=
   `names<-`(multivar_adjustment$variable) %>%
   lapply(as.formula) %>%
   lapply(
-    glm
-    ,family=
-      binomial(link='logit')
+    lm
     ,data=
-      processed_data_BC_A
+      processed_data
   ) %>%
   lapply(tidy) %>%
   lapply(X=names(.),Y=.,\(X,Y)mutate(Y[[X]],variable=X)) %>%
@@ -2321,7 +2385,6 @@ multivar_reg=
 
 ```{r table-2, echo=FALSE}
 multivar_reg  %>%
-  filter(variable%in%var$independent[1]) %>%
   filter(term!='(Intercept)') %>%
   group_by(variable) %>%
   slice(1) %>%
@@ -2386,12 +2449,11 @@ multivar_reg_sig_var=
 
 ## Mediation analysis
 
-We adjust the effects of `ns1_od` using its confounders and mediators, including `nst_od`.
+We adjust the effects of variables of interest, i.e., independent variables and other variables that are significant in the multivariate regressiong analysis, using their confounders and mediators.
 
 ```{r table-s8, echo=FALSE}
 correlation_to_indep_sig  %>%
   filter(from%in%multivar_reg_sig_var) %>%
-  filter(from%in%intersect(var$independent[1],multivar_reg_sig_var)) %>%
   filter(to%in%univar_reg_sig_var) %>%
   mutate(p.value=p.value) %>%
   mutate_at(3,round,3) %>%
@@ -2411,7 +2473,7 @@ correlation_to_indep_sig  %>%
     ,caption=
       paste0(
         'Table S8. Significant correlation from '
-        ,'NS1.'
+        ,'independent variables.'
       )
     ,
   ) %>%
@@ -2470,6 +2532,7 @@ multivar_adjustment_mediator=
       )
   ) %>%
   select(variable,confounders,mediators, formula) %>%
+  filter(!duplicated(.)) %>%
   arrange(
     factor(
       variable
@@ -2478,7 +2541,7 @@ multivar_adjustment_mediator=
   )
 ```
 
-Since the sample size only allowed for 1 covariate in addition to `ns1_od`, we reduced the number of covariates without leaking information of the dependent variable as the outcome. Principal component analysis was conducted for this purpose.
+Since the sample size only allowed for 1 covariate in addition to variables of interest, we reduced the number of covariates without leaking information of the dependent variable as the outcome. Principal component analysis was conducted for this purpose.
 
 ```{r Conduct PCA, include=FALSE}
 pca=
@@ -2494,13 +2557,13 @@ pca=
     )
   ) %>%
   lapply(str_split,pattern='\\+') %>%
-  lapply(\(x)select_at(processed_data_BC_A,x[[1]])) %>%
+  lapply(\(x)select_at(processed_data,x[[1]])) %>%
   lapply(mutate_if,is.numeric,scale) %>%
   lapply(mutate_if,is.factor,\(x)ifelse(x==levels(x)[2],1,0)) %>%
   lapply(prcomp)
 ```
 
-```{r figure-s4, echo=FALSE, fig.height=3, fig.width=4}
+```{r figure-s4, echo=FALSE, fig.height=3, fig.width=5}
 ggarrange(
   pca %>%
     lapply(\(x)x$rotation) %>%
@@ -2509,7 +2572,6 @@ ggarrange(
     lapply(rownames_to_column,var='term') %>%
     lapply(gather,dimension,weight,-term,-mediators) %>%
     do.call(rbind,.) %>%
-    filter(str_detect(mediators,paste0('^',var$independent[1]))) %>%
     inner_join(
       multivar_adjustment_mediator %>%
         filter(str_count(formula,'\\+')>1) %>%
@@ -2552,7 +2614,6 @@ ggarrange(
       lapply(X=names(.),Y=.,\(X,Y)data.frame(mediators=X,pve=Y[[X]])) %>%
       lapply(rownames_to_column,var='pc') %>%
       do.call(rbind,.) %>%
-      filter(str_detect(mediators,paste0('^',var$independent[1]))) %>%
       inner_join(
         multivar_adjustment_mediator %>%
           filter(str_count(formula,'\\+')>1) %>%
@@ -2583,12 +2644,12 @@ ggarrange(
       ,NULL
       ,ncol=1
       ,nrow=2
-      ,widths=c(4)
+      ,widths=c(5)
       ,heights=c(2.25,0.75)
     )
     ,ncol=2
     ,nrow=1
-    ,widths=c(2,2)
+    ,widths=c(2.5,2.5)
     ,heights=c(3)
     ,labels=LETTERS[1:2]
   )
@@ -2596,9 +2657,9 @@ ggarrange(
 
 Figure S3. Principal component analysis: (A) proportion variance explained, and (B) weights. The y-axis is shared between A and B.
 
-All the covariates of `ns1_od` could be reduced into 1 covariate using PC1.
+All the covariates of variables of interest could be reduced into 1 covariate using PC1.
 
-Now, we conducted mediation analysis whether `ns1_od` effect on the dependent variable persisted without the mediators' effect, including `nst_od`.
+Now, we conducted mediation analysis whether the variables' effect on the dependent variable persisted without the mediators' effect.
 
 ```{r Conduct mediation analysis, include=FALSE}
 mediation=
@@ -2608,7 +2669,7 @@ mediation=
       ifelse(
         str_count(formula,'\\+')>1
         ,paste0(
-          'outcome'
+          'nst_od'
           ,'~'
           ,variable
           ,'+'
@@ -2628,11 +2689,9 @@ mediation=
   lapply(as.formula) %>%
   lapply(X=names(.),Y=.,\(X,Y)
     Y[[X]] %>%
-      glm(
-        family=
-          binomial(link='logit')
-        ,data=
-          processed_data_BC_A %>%
+      lm(
+        data=
+          processed_data %>%
           cbind(
             pca[[X]]$x %>%
               as.data.frame()
@@ -2667,7 +2726,6 @@ mediation=
 
 ```{r table-3, echo=FALSE}
 mediation  %>%
-  filter(variable%in%var$independent[1]) %>%
   filter(term!='(Intercept)') %>%
   group_by(variable,mediators) %>%
   slice(1) %>%
@@ -2713,11 +2771,11 @@ mediation  %>%
   kable_classic()
 ```
 
-There was no significant effect of `ns1_od` on the dependent variable beyond the `nst_od` effect. In contrast, the effect of `ns1_od` on the dependent variable persisted without another mediator.
+There was no significant effect of `age` and `sex` on the dependent variable beyond the `outcome` effect. In contrast, the effect of `ns1_od` on the dependent variable persisted without `outcome`. There was no mediator between `aptt` and the dependent variable.
 
 # Conclusion
 
-The effect of `ns1_od` on the dependent variable was mediated by `nst_od`.
+The effect of `ns1_od` on `nst_od` was mediated by `outcome`.
 
 # Session information
 

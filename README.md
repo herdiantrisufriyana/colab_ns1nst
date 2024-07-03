@@ -6,15 +6,10 @@ Josephine Diony Nanda, Trai-Ming Yeh, Rahmat Dani Satria, Ming-Kai Jhan, Yung-Ti
 
 We used R 4.4.0. All the analytical codes are publicly shared. However, data access should be requested to the corresponding author.
 
-```{r}
-# install.packages("devtools")
-devtools::install_github("herdiantrisufriyana/colab_ns1nst")
-```
-
-Install all the packages using renv package.
+After cloning this repo, install all the packages using renv package.
 
 ```{r}
-# install.packages("devtools")
+if (!require("renv")) install.packages("renv")
 renv::restore()
 ```
 
