@@ -1,0 +1,88 @@
+variable,value_old
+batch,Old
+batch,New
+physician_group,B
+physician_group,A
+physician_group,C
+physician_group,B1
+physician_group,A1
+sex,M
+sex,F
+severe,0
+severe,1
+ammonia,NA
+cm_dm,0
+cm_dm,1
+cm_dm,1.DM
+cm_crf,0
+cm_crf,1
+cm_hyp,0
+cm_hyp,1
+cm_hbv,NA
+cm_hbv,0
+cm_hbv,1
+cm_hcv,NA
+cm_hcv,0
+cm_hcv,1
+cm_malignancy,0
+cm_cva,0
+cm_cva,1
+cm_copd,0
+cm_copd,1
+cm_asthma,NA
+cm_asthma,0
+cm_gout,NA
+cm_gout,0
+cm_duodenal_ulcer,0
+cm_other_status,NA
+cm_other_status,0
+cm_other_status,1
+cm_other_condition,NA
+cm_other_condition,0
+cm_other_condition,CKD
+cm_other_condition,BPH
+cm_other_condition,CKD+Colon cancer
+cm_other_condition,AF
+cm_other_condition,ESRD
+cm_other_condition,CHF+黃疸
+cm_other_condition,Grave's disease
+cm_other_condition,ARF
+cm_other_condition,CHF+CAD
+cm_other_condition,Dementia
+cm_other_condition,CHF
+cm_other_condition,CAD+Myasthenia gravis
+cm_other_condition,pancreatic head cancer
+cm_other_condition,HIVD+Bil DJD over knee
+cm_other_condition,Renal stones
+cm_other_condition,CAD
+cm_other_condition,G6PD
+cm_other_condition,Layngeal tumor
+cm_other_condition,Bil OA kness+r’t renal stone
+cm_other_condition,SLE
+cm_other_condition,CAD+OCHA
+cm_other_condition,Epilepsy
+cm_other_condition,TB
+cm_other_condition,Parkinsonism
+ascitis,0
+ascitis,1
+pi_effusion,0
+pi_effusion,1
+ns1,NA
+ns1,0
+ns1,1
+igg,NA
+igg,1
+igg,0
+igm,NA
+igm,1
+igm,0
+diag_test,PCR(+)
+diag_test,"ELISA-IgG,IgM(+)"
+diag_test,NA
+diag_test,ELISA-IgM(+)
+diag_test,NS1(+)
+diag_test,NS1(+)/PCR(+)
+diag_test,"NS1(+),PCR(+)"
+diag_test,"ELISA-IgM,IgG(+),PCR(+)"
+infection,secondary
+infection,primary

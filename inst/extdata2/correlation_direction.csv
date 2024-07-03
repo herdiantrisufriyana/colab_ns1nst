@@ -1,0 +1,15 @@
+Var1,Var2,direction,hypothesis
+age,cm_dm,->,older patients are likely diabetes mellitus
+age,cm_hyp,->,older patients are likely hypertension
+age,ns1_od,->,age affects NS1
+age,plt,->,age affects platelet
+alb,cm_dm,<-,diabetes mellitus affects albumin
+alb,cm_hyp,<-,hypertension affects albumin
+alb,got,<-->,albumin and GOT share common causes
+alb,ns1_od,<-,NS1 affects albumin
+alb,nst_od,<-,NST affects albumin
+bil_t,nst_od,<-,NST affects total bilirubin
+bil_t,plt,<-->,total bilirubin and platelet share common causes
+cm_dm,cm_hyp,->,diabetes mellitus damages endothelium hence hypertension
+got,plt,<-->,albumin and GOT share common causes
+ns1_od,nst_od,->,NS1 effect is mediated by NST
