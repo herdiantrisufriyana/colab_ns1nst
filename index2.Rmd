@@ -5,6 +5,8 @@ date: "2024-05-13"
 output: html_document
 ---
 
+This analysis used the second assumption. [**Click here **](https://herdiantrisufriyana.github.io/colab_ns1nst/index.html) for the first assumption.
+
 # Programming environment
 
 We used R 4.4.0. All the analytical codes are publicly shared. However, data access should be requested to the corresponding author.

@@ -15,4 +15,4 @@ renv::restore()
 
 # Analytical codes
 
-All the codes are written in `colab_ns1nst.Rmd` and `colab_ns1nst_second.Rmd` for the first and second assumptions, respectively. Here are the HTML preview for the [**first**](https://htmlpreview.github.io/?https://github.com/herdiantrisufriyana/colab_ns1nst/blob/master/doc/colab_ns1nst.html) and [**second**](https://htmlpreview.github.io/?https://github.com/herdiantrisufriyana/colab_ns1nst/blob/master/doc/colab_ns1nst_second.html) assumptions.
+All the codes are written in `colab_ns1nst.Rmd` and `colab_ns1nst_second.Rmd` for the first and second assumptions, respectively. Here are the HTML preview for the [**first**](https://herdiantrisufriyana.github.io/colab_ns1nst/index.html) and [**second**](https://herdiantrisufriyana.github.io/colab_ns1nst/index2.html) assumptions.
